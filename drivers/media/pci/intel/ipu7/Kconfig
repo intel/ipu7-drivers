@@ -1,0 +1,40 @@
+config VIDEO_INTEL_IPU7
+	tristate "Intel IPU7 driver"
+	depends on ACPI
+	depends on MEDIA_SUPPORT
+	depends on MEDIA_PCI_SUPPORT
+	depends on X86_64
+	select IOMMU_API
+	select IOMMU_IOVA
+	select X86_DEV_DMA_OPS
+	select VIDEOBUF2_DMA_CONTIG
+	select V4L2_FWNODE
+	select PHYS_ADDR_T_64BIT
+	select COMMON_CLK
+	help
+	  This is the Intel imaging processing unit, found in Intel SoCs and
+	  used for capturing images and video from a camera sensor.
+
+	  To compile this driver, say Y here! It contains 3 modules -
+	  intel_ipu7, intel_ipu7_isys and intel_ipu7_psys.
+
+config VIDEO_INTEL_IPU_MGC
+	bool "Compile for MGC driver"
+	depends on VIDEO_INTEL_IPU7
+	help
+	  If selected, MGC device nodes would be created.
+
+	  Recommended for driver developers only.
+
+	  If you want to the MGC devices exposed to user as media entity,
+	  you must select this option, otherwise no.
+
+config IPU_ISYS_BRIDGE
+	bool "Intel IPU driver bridge"
+	default y
+	depends on VIDEO_INTEL_IPU6 || VIDEO_INTEL_IPU7
+	help
+	  If selected, IPU isys bridge would be enabled.
+
+	  If you want supported sensors can be registered as IPU subdevices,
+	  select y here.
