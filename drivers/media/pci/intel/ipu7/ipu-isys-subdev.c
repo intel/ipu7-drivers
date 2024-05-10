@@ -143,7 +143,7 @@ struct v4l2_mbus_framefmt *__ipu_isys_get_ffmt(struct v4l2_subdev *sd,
 	if (which == V4L2_SUBDEV_FORMAT_ACTIVE)
 		return &asd->ffmt[pad];
 	else
-		return v4l2_subdev_get_try_format(sd, state, pad);
+		return v4l2_subdev_state_get_format(state, pad);
 }
 
 struct v4l2_rect *__ipu_isys_get_selection(struct v4l2_subdev *sd,
@@ -163,9 +163,9 @@ struct v4l2_rect *__ipu_isys_get_selection(struct v4l2_subdev *sd,
 	} else {
 		switch (target) {
 		case V4L2_SEL_TGT_CROP:
-			return v4l2_subdev_get_try_crop(sd, state, pad);
+			return v4l2_subdev_state_get_crop(state, pad);
 		case V4L2_SEL_TGT_COMPOSE:
-			return v4l2_subdev_get_try_compose(sd, state, pad);
+			return v4l2_subdev_state_get_compose(state, pad);
 		}
 	}
 	WARN_ON(1);
@@ -551,11 +551,11 @@ int ipu_isys_subdev_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 
 	for (i = 0; i < asd->sd.entity.num_pads; i++) {
 		struct v4l2_mbus_framefmt *try_fmt =
-			v4l2_subdev_get_try_format(sd, fh->state, i);
+			v4l2_subdev_state_get_format(fh->state, i);
 		struct v4l2_rect *try_crop =
-			v4l2_subdev_get_try_crop(sd, fh->state, i);
+			v4l2_subdev_state_get_crop(fh->state, i);
 		struct v4l2_rect *try_compose =
-			v4l2_subdev_get_try_compose(sd, fh->state, i);
+			v4l2_subdev_state_get_compose(fh->state, i);
 
 		*try_fmt = asd->ffmt[i];
 		*try_crop = asd->crop[i];

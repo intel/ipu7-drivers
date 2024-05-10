@@ -37,7 +37,7 @@ struct ipu_isys_subdev_pdata {
 };
 
 struct sensor_async_subdev {
-	struct v4l2_async_subdev asd;
+	struct v4l2_async_connection asd;
 	struct ipu_isys_csi2_config csi2;
 };
 
