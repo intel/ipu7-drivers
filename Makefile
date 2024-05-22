@@ -7,6 +7,7 @@ MODSRC := $(shell pwd)
 
 export EXTERNAL_BUILD = 1
 export CONFIG_VIDEO_INTEL_IPU7 = m
+export CONFIG_IPU_ISYS_BRIDGE = y
 
 obj-y += drivers/media/pci/intel/
 
