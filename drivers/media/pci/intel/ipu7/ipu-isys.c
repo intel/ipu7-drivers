@@ -247,7 +247,7 @@ static int isys_fw_log_init(struct ipu_isys *isys)
 /* The .bound() notifier callback when a match is found */
 static int isys_notifier_bound(struct v4l2_async_notifier *notifier,
 			       struct v4l2_subdev *sd,
-			       struct v4l2_async_subdev *asd)
+			       struct v4l2_async_connection *asd)
 {
 	struct ipu_isys *isys = container_of(notifier,
 					struct ipu_isys, notifier);
@@ -276,43 +276,19 @@ static const struct v4l2_async_notifier_operations isys_async_ops = {
 	.complete = isys_notifier_complete,
 };
 
-static int isys_fwnode_parse(struct device *dev,
-			     struct v4l2_fwnode_endpoint *vep,
-			     struct v4l2_async_subdev *asd)
-{
-	struct sensor_async_subdev *s_asd =
-			container_of(asd, struct sensor_async_subdev, asd);
-
-	s_asd->csi2.port = vep->base.port;
-	s_asd->csi2.nlanes = vep->bus.mipi_csi2.num_data_lanes;
-
-	return 0;
-}
-
 static int isys_notifier_init(struct ipu_isys *isys)
 {
-	struct ipu_device *isp = isys->adev->isp;
-	size_t asd_struct_size = sizeof(struct sensor_async_subdev);
 	int ret;
 
-	v4l2_async_nf_init(&isys->notifier);
-	ret = v4l2_async_nf_parse_fwnode_endpoints(&isp->pdev->dev,
-						   &isys->notifier,
-						   asd_struct_size,
-						   isys_fwnode_parse);
-	if (ret < 0) {
-		dev_err(&isys->adev->dev,
-			"v4l2 parse_fwnode_endpoints() failed: %d\n", ret);
-		return ret;
-	}
-	if (list_empty(&isys->notifier.asd_list)) {
+	v4l2_async_nf_init(&isys->notifier, &isys->v4l2_dev);
+	if (list_empty(&isys->notifier.waiting_list)) {
 		/* isys probe could continue with async subdevs missing */
 		dev_warn(&isys->adev->dev, "no subdev found in graph\n");
 		return 0;
 	}
 
 	isys->notifier.ops = &isys_async_ops;
-	ret = v4l2_async_nf_register(&isys->v4l2_dev, &isys->notifier);
+	ret = v4l2_async_nf_register(&isys->notifier);
 	if (ret) {
 		dev_err(&isys->adev->dev,
 			"failed to register async notifier : %d\n", ret);

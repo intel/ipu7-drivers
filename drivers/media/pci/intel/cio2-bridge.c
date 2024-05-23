@@ -461,6 +461,7 @@ static int cio2_bridge_sensors_are_ready(void)
 
 	return ready;
 }
+int cio2_bridge_init(struct pci_dev *cio2);
 
 int cio2_bridge_init(struct pci_dev *cio2)
 {
