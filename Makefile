@@ -7,12 +7,19 @@ MODSRC := $(shell pwd)
 
 export EXTERNAL_BUILD = 1
 export CONFIG_VIDEO_INTEL_IPU7 = m
-export CONFIG_IPU_ISYS_BRIDGE = y
+# export CONFIG_IPU_ISYS_BRIDGE = n
+export CONFIG_IPU_BRIDGE = y
 
-obj-y += drivers/media/pci/intel/
+obj-y += drivers/media/pci/intel/ipu7/
+subdir-ccflags-y += -I$(src)/include
+
+export CONFIG_VIDEO_OV02C10 = m
+obj-y += drivers/media/i2c/
 
 subdir-ccflags-$(CONFIG_IPU_ISYS_BRIDGE) += \
 	-DCONFIG_IPU_ISYS_BRIDGE
+subdir-ccflags-$(CONFIG_IPU_BRIDGE) += \
+	-DCONFIG_IPU_BRIDGE
 subdir-ccflags-y += $(subdir-ccflags-m)
 
 all:
