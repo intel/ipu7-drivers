@@ -1,0 +1,35 @@
+From 7704cde6485721b1d9a90c00a7681d344abdb54a Mon Sep 17 00:00:00 2001
+From: Hao Yao <hao.yao@intel.com>
+Date: Tue, 2 Jul 2024 17:26:08 +0800
+Subject: [PATCH 3/4] media: pci: intel: Add IPU7 Kconfig & Makefile
+
+---
+ drivers/media/pci/intel/Kconfig  | 1 +
+ drivers/media/pci/intel/Makefile | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/drivers/media/pci/intel/Kconfig b/drivers/media/pci/intel/Kconfig
+index ee4684159d3d..3b325d2b095d 100644
+--- a/drivers/media/pci/intel/Kconfig
++++ b/drivers/media/pci/intel/Kconfig
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ 
+ source "drivers/media/pci/intel/ipu3/Kconfig"
++source "drivers/media/pci/intel/ipu7/Kconfig"
+ source "drivers/media/pci/intel/ivsc/Kconfig"
+ 
+ config IPU_BRIDGE
+diff --git a/drivers/media/pci/intel/Makefile b/drivers/media/pci/intel/Makefile
+index f199a97e1d78..213056608aca 100644
+--- a/drivers/media/pci/intel/Makefile
++++ b/drivers/media/pci/intel/Makefile
+@@ -4,4 +4,5 @@
+ #
+ obj-$(CONFIG_IPU_BRIDGE) += ipu-bridge.o
+ obj-y	+= ipu3/
++obj-y	+= ipu7/
+ obj-y	+= ivsc/
+-- 
+2.45.2
+

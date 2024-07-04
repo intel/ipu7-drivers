@@ -1,0 +1,45 @@
+From 710b52437ed6d109306fd35e886dedcd76d735a6 Mon Sep 17 00:00:00 2001
+From: Hao Yao <hao.yao@intel.com>
+Date: Wed, 3 Jul 2024 16:04:10 +0800
+Subject: [PATCH 4/4] media: i2c: Add ov02c10 Kconfig & Makefile
+
+---
+ drivers/media/i2c/Kconfig  | 9 +++++++++
+ drivers/media/i2c/Makefile | 1 +
+ 2 files changed, 10 insertions(+)
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 4c3435921f19..bf7dc2514666 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -322,6 +322,15 @@ config VIDEO_OV02A10
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ov02a10.
+ 
++config VIDEO_OV02C10
++	tristate "OmniVision OV02C10 sensor support"
++	help
++	  This is a Video4Linux2 sensor driver for the OmniVision
++	  OV02C10 camera.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called ov02c10.
++
+ config VIDEO_OV08D10
+         tristate "OmniVision OV08D10 sensor support"
+         help
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index dfbe6448b549..9ffc67e7a812 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -77,6 +77,7 @@ obj-$(CONFIG_VIDEO_MT9V111) += mt9v111.o
+ obj-$(CONFIG_VIDEO_OG01A1B) += og01a1b.o
+ obj-$(CONFIG_VIDEO_OV01A10) += ov01a10.o
+ obj-$(CONFIG_VIDEO_OV02A10) += ov02a10.o
++obj-$(CONFIG_VIDEO_OV02C10) += ov02c10.o
+ obj-$(CONFIG_VIDEO_OV08D10) += ov08d10.o
+ obj-$(CONFIG_VIDEO_OV08X40) += ov08x40.o
+ obj-$(CONFIG_VIDEO_OV13858) += ov13858.o
+-- 
+2.45.2
+

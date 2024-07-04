@@ -1,62 +1,37 @@
 # SPDX-License-Identifier: GPL-2.0
 # Copyright (c) 2017 - 2024 Intel Corporation.
 
+is_kernel_lt_6_10 = $(shell if [ $$(printf "6.10\n$(KERNELVERSION)" | sort -V | head -n1) != "6.10" ]; then echo 1; fi)
+ifeq ($(is_kernel_lt_6_10), 1)
 ifneq ($(EXTERNAL_BUILD), 1)
-srcpath := $(srctree)
+src := $(srctree)/$(src)
+endif
 endif
 
-intel-ipu7-objs				+= ipu.o \
-					   ipu-bus.o \
-					   ipu-dma.o \
-					   ipu-mmu.o \
-					   ipu-buttress.o \
-					   ipu-cpd.o \
-					   ipu-syscom.o \
-					   ipu-boot.o
-
-ifdef CONFIG_IPU_ISYS_BRIDGE
-intel-ipu7-objs				+= ../cio2-bridge.o
-endif
+intel-ipu7-objs				+= ipu7.o \
+					   ipu7-bus.o \
+					   ipu7-dma.o \
+					   ipu7-mmu.o \
+					   ipu7-buttress.o \
+					   ipu7-cpd.o \
+					   ipu7-syscom.o \
+					   ipu7-boot.o
 
 obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= intel-ipu7.o
 
-intel-ipu7-isys-objs			+= ipu-isys.o \
-					   ipu-isys-csi2.o \
+intel-ipu7-isys-objs			+= ipu7-isys.o \
+					   ipu7-isys-csi2.o \
 					   ipu7-isys-csi-phy.o \
-					   ipu-isys-csi2-be-soc.o \
-					   ipu-fw-isys.o \
-					   ipu-isys-video.o \
-					   ipu-isys-queue.o \
-					   ipu-isys-subdev.o
+					   ipu7-fw-isys.o \
+					   ipu7-isys-video.o \
+					   ipu7-isys-queue.o \
+					   ipu7-isys-subdev.o
 
-ifdef CONFIG_VIDEO_INTEL_IPU_MGC
-intel-ipu7-isys-objs                    += ipu-isys-tpg.o
+ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
+intel-ipu7-isys-objs                    += ipu7-isys-tpg.o
 endif
-
 obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= intel-ipu7-isys.o
 
-intel-ipu7-psys-objs			+= ipu-psys.o \
-					   ipu7-psys.o \
+obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= psys/
 
-intel-ipu7-psys-objs			+= ipu-fw-psys.o
-
-ifeq ($(CONFIG_COMPAT),y)
-intel-ipu7-psys-objs			+= ipu-psys-compat32.o
-endif
-
-obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= intel-ipu7-psys.o
-
-ccflags-y += -I$(srcpath)/$(src)/../../../../../include/
-ifdef CONFIG_IPU_ISYS_BRIDGE
-ccflags-y += -I$(srcpath)/$(src)/../
-endif
-ccflags-y += -I$(srcpath)/$(src)/platform
-ccflags-y += -I$(srcpath)/$(src)/abi/ia_gofo_boot_abi/
-ccflags-y += -I$(srcpath)/$(src)/abi/ia_gofo_common_abi/
-ccflags-y += -I$(srcpath)/$(src)/abi/ia_gofo_syscom_abi/
-ccflags-y += -I$(srcpath)/$(src)/abi/ipu_msg_abi/
-ccflags-y += -I$(srcpath)/$(src)/abi/ipu_isys_abi/include
-ccflags-y += -I$(srcpath)/$(src)/abi/ipu_config_abi/
-ccflags-y += -I$(srcpath)/$(src)/abi/ipu_insys_config_abi/
-ccflags-y += -I$(srcpath)/$(src)/abi/ipu_psys_config_abi/
-ccflags-y += -I$(srcpath)/$(src)/
+ccflags-y += -I$(src)/

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2013 - 2024 Intel Corporation
  */
@@ -6,19 +6,30 @@
 #include <linux/bitmap.h>
 #include <linux/bug.h>
 #include <linux/delay.h>
+#include <linux/device.h>
 #include <linux/iopoll.h>
+#include <linux/kernel.h>
+#include <linux/types.h>
+#include <linux/version.h>
 
-#include <media/ipu-isys.h>
+#include <media/ipu7-isys.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)
 #include <media/mipi-csi2.h>
+#endif
 #include <media/v4l2-device.h>
 
-#include "ipu.h"
-#include "ipu-buttress.h"
-#include "ipu-isys.h"
-#include "ipu-isys-csi2.h"
-#include "ipu-platform-regs.h"
-#include "ipu-isys-csi2-regs.h"
+#include "ipu7.h"
+#include "ipu7-bus.h"
+#include "ipu7-buttress.h"
+#include "ipu7-isys.h"
+#include "ipu7-isys-csi2.h"
+#include "ipu7-isys-csi2-regs.h"
+#include "ipu7-platform-regs.h"
 #include "ipu7-isys-csi-phy.h"
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)
+#define MIPI_CSI2_DT_RAW10		0x2b
+#endif
 
 #define PORT_A	0
 #define PORT_B	1
@@ -113,27 +124,6 @@ static const struct i_thssettle_params table2[] = {
 	{}
 };
 
-static const struct i_coarse_target_params table3[] = {
-	{80, 1499, 56},
-	{1500, 1999, 93},
-	{2000, 2499, 124},
-	{2500, 3499, 156},
-	{3500, 4500, 218},
-	{}
-};
-
-static const struct post_thres_params table5[] = {
-	{80, 99, 1, 308},
-	{100, 199, 1, 245},
-	{200, 299, 1, 119},
-	{300, 399, 1, 77},
-	{400, 999, 1, 56},
-	{1000, 1999, 1, 18},
-	{2000, 3499, 2, 5},
-	{3500, 4500, 4, 1},
-	{}
-};
-
 static const struct oa_lane_clk_div_params table6[] = {
 	{80, 159, 0x1},
 	{160, 319, 0x2},
@@ -144,85 +134,76 @@ static const struct oa_lane_clk_div_params table6[] = {
 	{}
 };
 
-static const struct des_delay_params table7[] = {
-	{80, 99, 106},
-	{100, 199, 85},
-	{200, 299, 43},
-	{300, 399, 29},
-	{400, 999, 22},
-	{1000, 3499, 10},
-	{3500, 4500, 4},
-	{}
-};
-
 enum ppi_datawidth {
 	PPI_DATAWIDTH_8BIT = 0,
 	PPI_DATAWIDTH_16BIT = 1,
 };
 
-static void dwc_phy_write(struct ipu_isys *isys, u32 id, u32 addr, u16 data)
+static void dwc_phy_write(struct ipu7_isys *isys, u32 id, u32 addr, u16 data)
 {
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CDPHY_BASE(id);
 
-	dev_dbg(&isys->adev->dev, "phy write: reg 0x%lx = data 0x%04x",
+	dev_dbg(&isys->adev->auxdev.dev, "phy write: reg 0x%lx = data 0x%04x",
 		base + addr - isys_base, data);
 	writew(data, base + addr);
 }
 
-static u16 dwc_phy_read(struct ipu_isys *isys, u32 id, u32 addr)
+static u16 dwc_phy_read(struct ipu7_isys *isys, u32 id, u32 addr)
 {
 	u16 data;
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CDPHY_BASE(id);
 
 	data = readw(base + addr);
-	dev_dbg(&isys->adev->dev, "phy read: reg 0x%lx = data 0x%04x",
+	dev_dbg(&isys->adev->auxdev.dev, "phy read: reg 0x%lx = data 0x%04x",
 		base + addr - isys_base, data);
 
 	return data;
 }
 
-static void dwc_csi_write(struct ipu_isys *isys, u32 id, u32 addr,
+static void dwc_csi_write(struct ipu7_isys *isys, u32 id, u32 addr,
 			  u32 data)
 {
+	struct device *dev = &isys->adev->auxdev.dev;
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CSI2_HOST_BASE(id);
 
-	dev_dbg(&isys->adev->dev, "csi write: reg 0x%lx = data 0x%08x",
+	dev_dbg(dev, "csi write: reg 0x%lx = data 0x%08x",
 		base + addr - isys_base, data);
 	writel(data, base + addr);
-	dev_dbg(&isys->adev->dev, "csi read: reg 0x%lx = data 0x%08x",
+	dev_dbg(dev, "csi read: reg 0x%lx = data 0x%08x",
 		base + addr - isys_base, readl(base + addr));
 }
 
-static void gpreg_write(struct ipu_isys *isys, u32 id, u32 addr,
+static void gpreg_write(struct ipu7_isys *isys, u32 id, u32 addr,
 			u32 data)
 {
+	struct device *dev = &isys->adev->auxdev.dev;
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CSI2_GPREGS_BASE(id);
 
-	dev_dbg(&isys->adev->dev, "gpreg write: reg 0x%lx = data 0x%08x",
+	dev_dbg(dev, "gpreg write: reg 0x%lx = data 0x%08x",
 		base + addr - isys_base, data);
 	writel(data, base + addr);
-	dev_dbg(&isys->adev->dev, "gpreg read: reg 0x%lx = data 0x%08x",
+	dev_dbg(dev, "gpreg read: reg 0x%lx = data 0x%08x",
 		base + addr - isys_base, readl(base + addr));
 }
 
-static u32 dwc_csi_read(struct ipu_isys *isys, u32 id, u32 addr)
+static u32 dwc_csi_read(struct ipu7_isys *isys, u32 id, u32 addr)
 {
 	u32 data;
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CSI2_HOST_BASE(id);
 
 	data = readl(base + addr);
-	dev_dbg(&isys->adev->dev, "csi read: reg 0x%lx = data 0x%x",
+	dev_dbg(&isys->adev->auxdev.dev, "csi read: reg 0x%lx = data 0x%x",
 		base + addr - isys_base, data);
 
 	return data;
 }
 
-static void dwc_phy_write_mask(struct ipu_isys *isys, u32 id, u32 addr,
+static void dwc_phy_write_mask(struct ipu7_isys *isys, u32 id, u32 addr,
 			       u16 val, u8 lo, u8 hi)
 {
 	u32 temp, mask;
@@ -237,7 +218,7 @@ static void dwc_phy_write_mask(struct ipu_isys *isys, u32 id, u32 addr,
 	dwc_phy_write(isys, id, addr, temp);
 }
 
-static void dwc_csi_write_mask(struct ipu_isys *isys, u32 id, u32 addr,
+static void dwc_csi_write_mask(struct ipu7_isys *isys, u32 id, u32 addr,
 			       u32 val, u8 hi, u8 lo)
 {
 	u32 temp, mask;
@@ -251,20 +232,19 @@ static void dwc_csi_write_mask(struct ipu_isys *isys, u32 id, u32 addr,
 	dwc_csi_write(isys, id, addr, temp);
 }
 
-static void ipu7_isys_csi_ctrl_cfg(struct ipu_isys *isys,
-				   struct ipu_isys_csi2_config *cfg)
+static void ipu7_isys_csi_ctrl_cfg(struct ipu7_isys *isys,
+				   struct ipu7_isys_csi2_config *cfg)
 {
+	struct device *dev = &isys->adev->auxdev.dev;
 	u32 id, lanes;
 	u32 val;
 
 	id = cfg->port;
 	lanes = cfg->nlanes;
-	dev_dbg(&isys->adev->dev, "csi-%d controller init with %u lanes",
-		id, lanes);
+	dev_dbg(dev, "csi-%d controller init with %u lanes", id, lanes);
 
 	val = dwc_csi_read(isys, id, VERSION);
-	dev_dbg(&isys->adev->dev, "csi-%d controller version = 0x%x",
-		id, val);
+	dev_dbg(dev, "csi-%d controller version = 0x%x", id, val);
 
 	/* num of active data lanes */
 	dwc_csi_write(isys, id, N_LANES, lanes - 1);
@@ -284,7 +264,7 @@ static void ipu7_isys_csi_ctrl_cfg(struct ipu_isys *isys,
 	dwc_csi_write(isys, id, INT_MSK_ECC_CORRECTED, 0x0);
 }
 
-static void ipu7_isys_csi_phy_reset(struct ipu_isys *isys, u32 id)
+static void ipu7_isys_csi_phy_reset(struct ipu7_isys *isys, u32 id)
 {
 	dwc_csi_write(isys, id, PHY_SHUTDOWNZ, 0);
 	dwc_csi_write(isys, id, DPHY_RSTZ, 0);
@@ -294,15 +274,15 @@ static void ipu7_isys_csi_phy_reset(struct ipu_isys *isys, u32 id)
 }
 
 #define N_DATA_IDS		8
-DECLARE_BITMAP(data_ids, N_DATA_IDS);
+static DECLARE_BITMAP(data_ids, N_DATA_IDS);
 /* 8 Data ID monitors, each Data ID is composed by pair of VC and data type */
-int ipu7_isys_csi_ctrl_dids_config(struct ipu_isys *isys, u32 id, u8 vc, u8 dt)
+int ipu7_isys_csi_ctrl_dids_config(struct ipu7_isys *isys, u32 id, u8 vc, u8 dt)
 {
 	u32 reg, n;
 	int ret;
 	u8 lo, hi;
 
-	dev_dbg(&isys->adev->dev, "Config CSI-%u with vc:%u data-type:0x%x\n",
+	dev_dbg(&isys->adev->auxdev.dev, "Config CSI-%u with vc:%u data-type:0x%x\n",
 		id, vc, dt);
 	/* enable VCX: 2-bit field for DPHY, 3-bit for CPHY */
 	dwc_csi_write(isys, id, VC_EXTENSION, 0x0);
@@ -328,11 +308,11 @@ int ipu7_isys_csi_ctrl_dids_config(struct ipu_isys *isys, u32 id, u8 vc, u8 dt)
 }
 
 #define CDPHY_TIMEOUT (5000000)
-static int ipu7_isys_phy_ready(struct ipu_isys *isys, u32 id)
+static int ipu7_isys_phy_ready(struct ipu7_isys *isys, u32 id)
 {
 	void __iomem *base = isys->pdata->base;
 	void __iomem *gpreg = base + IS_IO_CSI2_GPREGS_BASE(id);
-	struct device *dev = &isys->adev->dev;
+	struct device *dev = &isys->adev->auxdev.dev;
 	unsigned int i;
 	u32 phy_ready;
 	u32 reg, rext;
@@ -433,7 +413,7 @@ static int lookup_table6(u16 mbps)
 	return -ENXIO;
 }
 
-u16 deskew_fine_mem[] = {
+static const u16 deskew_fine_mem[] = {
 	0x0404, 0x040c, 0x0414, 0x041c,
 	0x0423, 0x0429, 0x0430, 0x043a,
 	0x0445, 0x044a, 0x0450, 0x045a,
@@ -468,20 +448,20 @@ u16 deskew_fine_mem[] = {
 	0x07e4, 0x07ec, 0x07f4, 0x07fc,
 };
 
-static void ipu7_isys_phy_config(struct ipu_isys *isys, u8 id, u8 lanes,
+static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 				 bool aggregation)
 {
-	struct device *dev = &isys->adev->dev;
+	struct device *dev = &isys->adev->auxdev.dev;
 	u16 hsrxval0, hsrxval1, hsrxval2;
-	int ret, index;
 	s64 link_freq;
+	int index;
 	s64 mbps;
 	u16 reg;
 	u16 val;
 	u32 i;
 
-	ret = ipu_isys_csi2_get_link_freq(&isys->csi2[id], &link_freq);
-	if (ret) {
+	link_freq = ipu7_isys_csi2_get_link_freq(&isys->csi2[id]);
+	if (link_freq < 0) {
 		dev_warn(dev, "get link freq failed, use default mbps\n");
 		link_freq = 600000000;
 	}
@@ -774,8 +754,8 @@ static void ipu7_isys_phy_config(struct ipu_isys *isys, u8 id, u8 lanes,
 	}
 }
 
-int ipu7_isys_csi_phy_powerup(struct ipu_isys *isys,
-			      struct ipu_isys_csi2_config *cfg)
+int ipu7_isys_csi_phy_powerup(struct ipu7_isys *isys,
+			      struct ipu7_isys_csi2_config *cfg)
 {
 	int ret;
 	u32 id = cfg->port;
@@ -856,8 +836,8 @@ int ipu7_isys_csi_phy_powerup(struct ipu_isys *isys,
 	return 0;
 }
 
-void ipu7_isys_csi_phy_powerdown(struct ipu_isys *isys,
-				 struct ipu_isys_csi2_config *cfg)
+void ipu7_isys_csi_phy_powerdown(struct ipu7_isys *isys,
+				 struct ipu7_isys_csi2_config *cfg)
 {
 	ipu7_isys_csi_phy_reset(isys, cfg->port);
 	if (is_ipu7p5(isys->adev->isp->hw_ver) &&

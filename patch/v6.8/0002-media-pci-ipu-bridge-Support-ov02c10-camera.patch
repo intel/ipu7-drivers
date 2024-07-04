@@ -1,0 +1,25 @@
+From 9cceb57c706b83b565a19abbb0327af58dd751f3 Mon Sep 17 00:00:00 2001
+From: Hao Yao <hao.yao@intel.com>
+Date: Wed, 3 Jul 2024 16:06:52 +0800
+Subject: [PATCH 2/4] media: pci: ipu-bridge: Support ov02c10 camera
+
+---
+ drivers/media/pci/intel/ipu-bridge.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/media/pci/intel/ipu-bridge.c b/drivers/media/pci/intel/ipu-bridge.c
+index ea51537c6b4e..1a32b91c2395 100644
+--- a/drivers/media/pci/intel/ipu-bridge.c
++++ b/drivers/media/pci/intel/ipu-bridge.c
+@@ -56,6 +56,8 @@ static const struct ipu_sensor_config ipu_supported_sensors[] = {
+ 	IPU_SENSOR_CONFIG("INT3474", 1, 180000000),
+ 	/* Hynix hi556 */
+ 	IPU_SENSOR_CONFIG("INT3537", 1, 437000000),
++	/* Omnivision ov02c10 */
++	IPU_SENSOR_CONFIG("OVTI02C1", 1, 400000000),
+ 	/* Omnivision ov13b10 */
+ 	IPU_SENSOR_CONFIG("OVTIDB10", 1, 560000000),
+ 	IPU_SENSOR_CONFIG("OVTI13B1", 1, 560000000),
+-- 
+2.45.2
+
