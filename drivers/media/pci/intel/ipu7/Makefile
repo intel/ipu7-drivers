@@ -15,7 +15,8 @@ intel-ipu7-objs				+= ipu7.o \
 					   ipu7-buttress.o \
 					   ipu7-cpd.o \
 					   ipu7-syscom.o \
-					   ipu7-boot.o
+					   ipu7-boot.o \
+					   ../ipu-bridge.o
 
 obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= intel-ipu7.o
 
