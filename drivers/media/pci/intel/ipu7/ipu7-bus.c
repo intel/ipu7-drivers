@@ -28,7 +28,7 @@ static int bus_pm_runtime_suspend(struct device *dev)
 	if (ret)
 		return ret;
 
-	ret = ipu7_buttress_power(dev, adev->ctrl, false);
+	ret = ipu7_buttress_powerdown(dev, adev->ctrl);
 	dev_dbg(dev, "buttress power down %d\n", ret);
 	if (!ret)
 		return 0;
@@ -48,7 +48,7 @@ static int bus_pm_runtime_resume(struct device *dev)
 	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
 	int ret;
 
-	ret = ipu7_buttress_power(dev, adev->ctrl, true);
+	ret = ipu7_buttress_powerup(dev, adev->ctrl);
 	dev_dbg(dev, "buttress power up %d\n", ret);
 	if (ret)
 		return ret;
@@ -60,7 +60,7 @@ static int bus_pm_runtime_resume(struct device *dev)
 	return 0;
 
 out_err:
-	ipu7_buttress_power(dev, adev->ctrl, false);
+	ipu7_buttress_powerdown(dev, adev->ctrl);
 
 	return -EBUSY;
 }

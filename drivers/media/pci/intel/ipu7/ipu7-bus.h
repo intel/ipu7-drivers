@@ -31,7 +31,7 @@ enum ipu7_subsys {
 
 struct ipu7_bus_device {
 	struct auxiliary_device auxdev;
-	struct auxiliary_driver *auxdrv;
+	const struct auxiliary_driver *auxdrv;
 	const struct ipu7_auxdrv_data *auxdrv_data;
 	struct list_head list;
 	enum ipu7_subsys subsys;

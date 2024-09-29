@@ -61,12 +61,14 @@ static const u32 ipu7_adev_irq_mask[2] = {
 int ipu7_buttress_ipc_reset(struct ipu7_device *isp,
 			    struct ipu7_buttress_ipc *ipc)
 {
+	struct device *dev = &isp->pdev->dev;
+
 	unsigned int retries = BUTTRESS_IPC_RESET_RETRY;
 	struct ipu7_buttress *b = &isp->buttress;
 	u32 val = 0, csr_in_clr;
 
 	if (!isp->secure_mode) {
-		dev_dbg(&isp->pdev->dev, "Skip IPC reset for non-secure mode");
+		dev_dbg(dev, "Skip IPC reset for non-secure mode\n");
 		return 0;
 	}
 
@@ -145,7 +147,7 @@ int ipu7_buttress_ipc_reset(struct ipu7_device *isp,
 			usleep_range(200, 300);
 			val = readl(isp->base + ipc->csr_in);
 			if (val & QUERY) {
-				dev_dbg(&isp->pdev->dev,
+				dev_dbg(dev,
 					"RST_PHASE2 retry csr_in = %x\n", val);
 				break;
 			}
@@ -162,14 +164,13 @@ int ipu7_buttress_ipc_reset(struct ipu7_device *isp,
 			writel(ENTRY, isp->base + ipc->csr_out);
 			break;
 		default:
-			dev_warn_ratelimited(&isp->pdev->dev,
-					     "Unexpected CSR 0x%x\n", val);
+			dev_dbg_ratelimited(dev, "Unexpected CSR 0x%x\n", val);
 			break;
 		}
 	} while (retries--);
 
 	mutex_unlock(&b->ipc_mutex);
-	dev_err(&isp->pdev->dev, "Timed out while waiting for CSE\n");
+	dev_err(dev, "Timed out while waiting for CSE\n");
 
 	return -ETIMEDOUT;
 }
@@ -213,25 +214,25 @@ static void ipu7_buttress_ipc_recv(struct ipu7_device *isp,
 }
 
 static int ipu7_buttress_ipc_send_bulk(struct ipu7_device *isp,
-				       enum ipu7_buttress_ipc_domain ipc_domain,
 				       struct ipu7_ipc_buttress_bulk_msg *msgs,
 				       u32 size)
 {
 	unsigned long tx_timeout_jiffies, rx_timeout_jiffies;
 	unsigned int i, retry = BUTTRESS_IPC_CMD_SEND_RETRY;
 	struct ipu7_buttress *b = &isp->buttress;
+	struct device *dev = &isp->pdev->dev;
 	struct ipu7_buttress_ipc *ipc;
 	u32 val;
 	int ret;
 	int tout;
 
-	ipc = ipc_domain == IPU_BUTTRESS_IPC_CSE ? &b->cse : &b->ish;
+	ipc = &b->cse;
 
 	mutex_lock(&b->ipc_mutex);
 
 	ret = ipu7_buttress_ipc_validity_open(isp, ipc);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "IPC validity open failed\n");
+		dev_err(dev, "IPC validity open failed\n");
 		goto out;
 	}
 
@@ -243,7 +244,7 @@ static int ipu7_buttress_ipc_send_bulk(struct ipu7_device *isp,
 		if (msgs[i].require_resp)
 			reinit_completion(&ipc->recv_complete);
 
-		dev_dbg(&isp->pdev->dev, "bulk IPC command: 0x%x\n",
+		dev_dbg(dev, "bulk IPC command: 0x%x\n",
 			msgs[i].cmd);
 		writel(msgs[i].cmd, isp->base + ipc->data0_out);
 		val = BUTTRESS_IU2CSEDB0_BUSY | msgs[i].cmd_size;
@@ -252,7 +253,7 @@ static int ipu7_buttress_ipc_send_bulk(struct ipu7_device *isp,
 		tout = wait_for_completion_timeout(&ipc->send_complete,
 						   tx_timeout_jiffies);
 		if (!tout) {
-			dev_err(&isp->pdev->dev, "send IPC response timeout\n");
+			dev_err(dev, "send IPC response timeout\n");
 			if (!retry--) {
 				ret = -ETIMEDOUT;
 				goto out;
@@ -272,29 +273,28 @@ static int ipu7_buttress_ipc_send_bulk(struct ipu7_device *isp,
 		tout = wait_for_completion_timeout(&ipc->recv_complete,
 						   rx_timeout_jiffies);
 		if (!tout) {
-			dev_err(&isp->pdev->dev, "recv IPC response timeout\n");
+			dev_err(dev, "recv IPC response timeout\n");
 			ret = -ETIMEDOUT;
 			goto out;
 		}
 
 		if (ipc->nack_mask &&
 		    (ipc->recv_data & ipc->nack_mask) == ipc->nack) {
-			dev_err(&isp->pdev->dev,
-				"IPC NACK for cmd 0x%x\n", msgs[i].cmd);
+			dev_err(dev, "IPC NACK for cmd 0x%x\n", msgs[i].cmd);
 			ret = -EIO;
 			goto out;
 		}
 
 		if (ipc->recv_data != msgs[i].expected_resp) {
-			dev_err(&isp->pdev->dev,
-				"expected resp: 0x%x, IPC response: 0x%x ",
+			dev_err(dev,
+				"expected resp: 0x%x, IPC response: 0x%x\n",
 				msgs[i].expected_resp, ipc->recv_data);
 			ret = -EIO;
 			goto out;
 		}
 	}
 
-	dev_dbg(&isp->pdev->dev, "bulk IPC commands done\n");
+	dev_dbg(dev, "bulk IPC commands done\n");
 
 out:
 	ipu7_buttress_ipc_validity_close(isp, ipc);
@@ -302,11 +302,9 @@ out:
 	return ret;
 }
 
-static int
-ipu7_buttress_ipc_send(struct ipu7_device *isp,
-		       enum ipu7_buttress_ipc_domain ipc_domain,
-		       u32 ipc_msg, u32 size, bool require_resp,
-		       u32 expected_resp)
+static int ipu7_buttress_ipc_send(struct ipu7_device *isp,
+				  u32 ipc_msg, u32 size, bool require_resp,
+				  u32 expected_resp)
 {
 	struct ipu7_ipc_buttress_bulk_msg msg = {
 		.cmd = ipc_msg,
@@ -315,7 +313,7 @@ ipu7_buttress_ipc_send(struct ipu7_device *isp,
 		.expected_resp = expected_resp,
 	};
 
-	return ipu7_buttress_ipc_send_bulk(isp, ipc_domain, &msg, 1);
+	return ipu7_buttress_ipc_send_bulk(isp, &msg, 1);
 }
 
 static irqreturn_t ipu7_buttress_call_isr(struct ipu7_bus_device *adev)
@@ -450,14 +448,14 @@ irqreturn_t ipu7_buttress_isr_threaded(int irq, void *isp_ptr)
 
 static int isys_d2d_power(struct device *dev, bool on)
 {
+	struct ipu7_device *isp = to_ipu7_bus_device(dev)->isp;
 	int ret = 0;
 	u32 val;
-	struct ipu7_device *isp = to_ipu7_bus_device(dev)->isp;
 
-	dev_dbg(&isp->pdev->dev, "power %s isys d2d.\n", on ? "UP" : "DOWN");
+	dev_dbg(dev, "power %s isys d2d.\n", on ? "UP" : "DOWN");
 	val = readl(isp->base + BUTTRESS_REG_D2D_CTL);
 	if (!(val & BUTTRESS_D2D_PWR_ACK) ^ on) {
-		dev_info(&isp->pdev->dev, "d2d already in %s state.\n",
+		dev_info(dev, "d2d already in %s state.\n",
 			 on ? "UP" : "DOWN");
 		return 0;
 	}
@@ -468,8 +466,7 @@ static int isys_d2d_power(struct device *dev, bool on)
 				 val, (!(val & BUTTRESS_D2D_PWR_ACK) ^ on),
 				 100, BUTTRESS_POWER_TIMEOUT_US);
 	if (ret)
-		dev_err(&isp->pdev->dev,
-			"power %s d2d timeout. status: 0x%x\n",
+		dev_err(dev, "power %s d2d timeout. status: 0x%x\n",
 			on ? "UP" : "DOWN", val);
 
 	return ret;
@@ -500,9 +497,7 @@ static void isys_nde_control(struct device *dev, bool on)
 	writel(val, isp->base + BUTTRESS_REG_NDE_CONTROL);
 }
 
-/* TODO: split buttress_power to 2 functions */
-int ipu7_buttress_power(struct device *dev, struct ipu7_buttress_ctrl *ctrl,
-			bool on)
+int ipu7_buttress_powerup(struct device *dev, struct ipu7_buttress_ctrl *ctrl)
 {
 	struct ipu7_device *isp = to_ipu7_bus_device(dev)->isp;
 	u32 val, exp_sts;
@@ -513,72 +508,92 @@ int ipu7_buttress_power(struct device *dev, struct ipu7_buttress_ctrl *ctrl,
 
 	mutex_lock(&isp->buttress.power_mutex);
 
-	exp_sts = on ? ctrl->pwr_sts_on << ctrl->pwr_sts_shift :
-		ctrl->pwr_sts_off << ctrl->pwr_sts_shift;
-	if (on) {
-		if (ctrl->subsys_id == IPU_IS) {
-			ret = isys_d2d_power(dev, on);
-			if (ret)
-				goto out_power;
-			isys_nde_control(dev, on);
-		}
-		/* request clock resource ownership */
-		val = readl(isp->base + BUTTRESS_REG_SLEEP_LEVEL_CFG);
-		val |= ctrl->ovrd_clk;
-		writel(val, isp->base + BUTTRESS_REG_SLEEP_LEVEL_CFG);
-		ret = readl_poll_timeout(isp->base +
-					 BUTTRESS_REG_SLEEP_LEVEL_STS,
-					 val, (val & ctrl->own_clk_ack),
-					 100, BUTTRESS_POWER_TIMEOUT_US);
+	exp_sts = ctrl->pwr_sts_on << ctrl->pwr_sts_shift;
+	if (ctrl->subsys_id == IPU_IS) {
+		ret = isys_d2d_power(dev, true);
 		if (ret)
-			dev_err(&isp->pdev->dev,
-				"request clk ownership timeout. status 0x%x\n",
-				val);
+			goto out_power;
+		isys_nde_control(dev, true);
 	}
 
-	if (on)
-		val = ctrl->ratio << ctrl->ratio_shift |
-			ctrl->cdyn << ctrl->cdyn_shift;
-	else
-		val = 0x8 << ctrl->ratio_shift;
+	/* request clock resource ownership */
+	val = readl(isp->base + BUTTRESS_REG_SLEEP_LEVEL_CFG);
+	val |= ctrl->ovrd_clk;
+	writel(val, isp->base + BUTTRESS_REG_SLEEP_LEVEL_CFG);
+	ret = readl_poll_timeout(isp->base + BUTTRESS_REG_SLEEP_LEVEL_STS,
+				 val, (val & ctrl->own_clk_ack),
+				 100, BUTTRESS_POWER_TIMEOUT_US);
+	if (ret)
+		dev_warn(dev, "request clk ownership timeout. status 0x%x\n",
+			 val);
 
-	dev_dbg(&isp->pdev->dev, "set 0x%x to %s_WORKPOINT_REQ.\n", val,
+	val = ctrl->ratio << ctrl->ratio_shift | ctrl->cdyn << ctrl->cdyn_shift;
+
+	dev_dbg(dev, "set 0x%x to %s_WORKPOINT_REQ.\n", val,
+		ctrl->subsys_id == IPU_IS ? "IS" : "PS");
+	writel(val, isp->base + ctrl->freq_ctl);
+
+	ret = readl_poll_timeout(isp->base + BUTTRESS_REG_PWR_STATUS,
+				 val, ((val & ctrl->pwr_sts_mask) == exp_sts),
+				 100, BUTTRESS_POWER_TIMEOUT_US);
+	if (ret) {
+		dev_err(dev, "%s power up timeout with status: 0x%x\n",
+			ctrl->subsys_id == IPU_IS ? "IS" : "PS", val);
+		goto out_power;
+	}
+
+	dev_dbg(dev, "%s power up successfully. status: 0x%x\n",
+		ctrl->subsys_id == IPU_IS ? "IS" : "PS", val);
+
+	/* release clock resource ownership */
+	val = readl(isp->base + BUTTRESS_REG_SLEEP_LEVEL_CFG);
+	val &= ~ctrl->ovrd_clk;
+	writel(val, isp->base + BUTTRESS_REG_SLEEP_LEVEL_CFG);
+
+out_power:
+	ctrl->started = !ret;
+	mutex_unlock(&isp->buttress.power_mutex);
+
+	return ret;
+}
+
+int ipu7_buttress_powerdown(struct device *dev,
+			    struct ipu7_buttress_ctrl *ctrl)
+{
+	struct ipu7_device *isp = to_ipu7_bus_device(dev)->isp;
+	u32 val, exp_sts;
+	int ret = 0;
+
+	if (!ctrl)
+		return 0;
+
+	mutex_lock(&isp->buttress.power_mutex);
+
+	exp_sts = ctrl->pwr_sts_off << ctrl->pwr_sts_shift;
+	val = 0x8 << ctrl->ratio_shift;
+
+	dev_dbg(dev, "set 0x%x to %s_WORKPOINT_REQ.\n", val,
 		ctrl->subsys_id == IPU_IS ? "IS" : "PS");
 	writel(val, isp->base + ctrl->freq_ctl);
 	ret = readl_poll_timeout(isp->base + BUTTRESS_REG_PWR_STATUS,
 				 val, ((val & ctrl->pwr_sts_mask) == exp_sts),
 				 100, BUTTRESS_POWER_TIMEOUT_US);
 	if (ret) {
-		dev_err(&isp->pdev->dev,
-			"%s power %s timeout with status: 0x%x\n",
-			ctrl->subsys_id == IPU_IS ? "IS" : "PS",
-			on ? "up" : "down", val);
+		dev_err(dev, "%s power down timeout with status: 0x%x\n",
+			ctrl->subsys_id == IPU_IS ? "IS" : "PS", val);
 		goto out_power;
 	}
 
-	dev_dbg(&isp->pdev->dev, "%s power %s successfully. status: 0x%x\n",
-		ctrl->subsys_id == IPU_IS ? "IS" : "PS",
-		on ? "up" : "down", val);
-
-	if (on) {
-		/* release clock resource ownership */
-		val = readl(isp->base + BUTTRESS_REG_SLEEP_LEVEL_CFG);
-		val &= ~ctrl->ovrd_clk;
-		writel(val, isp->base + BUTTRESS_REG_SLEEP_LEVEL_CFG);
-	}
-
+	dev_dbg(dev, "%s power down successfully. status: 0x%x\n",
+		ctrl->subsys_id == IPU_IS ? "IS" : "PS", val);
 out_power:
-	if (!on && ctrl->subsys_id == IPU_IS && !ret) {
-		isys_d2d_power(dev, on);
-		isys_nde_control(dev, on);
+	if (ctrl->subsys_id == IPU_IS && !ret) {
+		isys_d2d_power(dev, false);
+		isys_nde_control(dev, false);
 	}
 
-	ctrl->started = !ret && on;
+	ctrl->started = false;
 	mutex_unlock(&isp->buttress.power_mutex);
-
-	dev_dbg(&isp->pdev->dev, "%s buttress power %s done.\n",
-		ctrl->subsys_id == IPU_IS ? "IS" : "PS",
-		on ? "up" : "down");
 
 	return ret;
 }
@@ -605,28 +620,6 @@ bool ipu7_buttress_auth_done(struct ipu7_device *isp)
 	return val == BUTTRESS_SECURITY_CTL_AUTH_DONE;
 }
 EXPORT_SYMBOL_NS_GPL(ipu7_buttress_auth_done, INTEL_IPU7);
-
-static void ipu7_buttress_set_isys_ratio(struct ipu7_device *isp,
-					 u32 isys_ratio)
-{
-	struct ipu7_buttress_ctrl *ctrl = isp->isys->ctrl;
-
-	mutex_lock(&isp->buttress.power_mutex);
-
-	if (ctrl->ratio == isys_ratio)
-		goto out_mutex_unlock;
-
-	ctrl->ratio = isys_ratio;
-	if (!ctrl->started)
-		return;
-
-	writel(ctrl->ratio << ctrl->ratio_shift |
-	       ctrl->cdyn << ctrl->cdyn_shift,
-	       isp->base + ctrl->freq_ctl);
-
-out_mutex_unlock:
-	mutex_unlock(&isp->buttress.power_mutex);
-}
 
 int ipu7_buttress_get_isys_freq(struct ipu7_device *isp, u32 *freq)
 {
@@ -673,37 +666,14 @@ int ipu7_buttress_get_psys_freq(struct ipu7_device *isp, u32 *freq)
 }
 EXPORT_SYMBOL_NS_GPL(ipu7_buttress_get_psys_freq, INTEL_IPU7);
 
-static int ipu7_buttress_set_isys_freq(struct ipu7_device *isp, u64 freq)
-{
-	u32 ratio = freq * 50 / 3;
-	int ret;
-
-	if (freq < BUTTRESS_MIN_FORCE_IS_RATIO ||
-	    freq > BUTTRESS_MAX_FORCE_IS_RATIO)
-		return -EINVAL;
-
-	ret = pm_runtime_get_sync(&isp->isys->auxdev.dev);
-	if (ret < 0) {
-		pm_runtime_put(&isp->isys->auxdev.dev);
-		dev_err(&isp->pdev->dev, "Runtime PM failed (%d)\n", ret);
-		return ret;
-	}
-
-	if (freq)
-		ipu7_buttress_set_isys_ratio(isp, ratio);
-
-	pm_runtime_put(&isp->isys->auxdev.dev);
-
-	return 0;
-}
-
 int ipu7_buttress_reset_authentication(struct ipu7_device *isp)
 {
+	struct device *dev = &isp->pdev->dev;
 	int ret;
 	u32 val;
 
 	if (!isp->secure_mode) {
-		dev_dbg(&isp->pdev->dev, "Skip auth for non-secure mode\n");
+		dev_dbg(dev, "Skip auth for non-secure mode\n");
 		return 0;
 	}
 
@@ -714,12 +684,11 @@ int ipu7_buttress_reset_authentication(struct ipu7_device *isp)
 				 val & BUTTRESS_FW_RESET_CTL_DONE, 500,
 				 BUTTRESS_CSE_FWRESET_TIMEOUT_US);
 	if (ret) {
-		dev_err(&isp->pdev->dev,
-			"Time out while resetting authentication state\n");
+		dev_err(dev, "Time out while resetting authentication state\n");
 		return ret;
 	}
 
-	dev_dbg(&isp->pdev->dev, "FW reset for authentication done\n");
+	dev_dbg(dev, "FW reset for authentication done\n");
 	writel(0, isp->base + BUTTRESS_REG_FW_RESET_CTL);
 	/* leave some time for HW restore */
 	usleep_range(800, 1000);
@@ -730,11 +699,12 @@ int ipu7_buttress_reset_authentication(struct ipu7_device *isp)
 int ipu7_buttress_authenticate(struct ipu7_device *isp)
 {
 	struct ipu7_buttress *b = &isp->buttress;
+	struct device *dev = &isp->pdev->dev;
 	u32 data, mask, done, fail;
 	int ret;
 
 	if (!isp->secure_mode) {
-		dev_dbg(&isp->pdev->dev, "Skip auth for non-secure mode\n");
+		dev_dbg(dev, "Skip auth for non-secure mode\n");
 		return 0;
 	}
 
@@ -759,13 +729,12 @@ int ipu7_buttress_authenticate(struct ipu7_device *isp)
 	 * Write sizeof(boot_load) | 0x2 << CLIENT_ID to
 	 * IU2CSEDB.IU2CSECMD and set IU2CSEDB.IU2CSEBUSY as
 	 */
-	dev_info(&isp->pdev->dev, "Sending BOOT_LOAD to CSE\n");
-	ret = ipu7_buttress_ipc_send(isp, IPU_BUTTRESS_IPC_CSE,
-				     BUTTRESS_IU2CSEDATA0_IPC_BOOT_LOAD,
+	dev_info(dev, "Sending BOOT_LOAD to CSE\n");
+	ret = ipu7_buttress_ipc_send(isp, BUTTRESS_IU2CSEDATA0_IPC_BOOT_LOAD,
 				     1, true,
 				     BUTTRESS_CSE2IUDATA0_IPC_BOOT_LOAD_DONE);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "CSE boot_load failed\n");
+		dev_err(dev, "CSE boot_load failed\n");
 		goto out_unlock;
 	}
 
@@ -777,12 +746,12 @@ int ipu7_buttress_authenticate(struct ipu7_device *isp)
 				  (data & mask) == fail), 500,
 				 BUTTRESS_CSE_BOOTLOAD_TIMEOUT_US);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "CSE boot_load timeout\n");
+		dev_err(dev, "CSE boot_load timeout\n");
 		goto out_unlock;
 	}
 
 	if ((data & mask) == fail) {
-		dev_err(&isp->pdev->dev, "CSE auth failed\n");
+		dev_err(dev, "CSE auth failed\n");
 		ret = -EINVAL;
 		goto out_unlock;
 	}
@@ -791,7 +760,7 @@ int ipu7_buttress_authenticate(struct ipu7_device *isp)
 				 data, data == BOOTLOADER_MAGIC_KEY, 500,
 				 BUTTRESS_CSE_BOOTLOAD_TIMEOUT_US);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "Unexpected magic number 0x%x\n",
+		dev_err(dev, "Unexpected magic number 0x%x\n",
 			data);
 		goto out_unlock;
 	}
@@ -801,13 +770,12 @@ int ipu7_buttress_authenticate(struct ipu7_device *isp)
 	 * Write sizeof(boot_load) | 0x2 << CLIENT_ID to
 	 * IU2CSEDB.IU2CSECMD and set IU2CSEDB.IU2CSEBUSY as
 	 */
-	dev_info(&isp->pdev->dev, "Sending AUTHENTICATE_RUN to CSE\n");
-	ret = ipu7_buttress_ipc_send(isp, IPU_BUTTRESS_IPC_CSE,
-				     BUTTRESS_IU2CSEDATA0_IPC_AUTH_RUN,
+	dev_info(dev, "Sending AUTHENTICATE_RUN to CSE\n");
+	ret = ipu7_buttress_ipc_send(isp, BUTTRESS_IU2CSEDATA0_IPC_AUTH_RUN,
 				     1, true,
 				     BUTTRESS_CSE2IUDATA0_IPC_AUTH_RUN_DONE);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "CSE authenticate_run failed\n");
+		dev_err(dev, "CSE authenticate_run failed\n");
 		goto out_unlock;
 	}
 
@@ -817,17 +785,17 @@ int ipu7_buttress_authenticate(struct ipu7_device *isp)
 				  (data & mask) == fail), 500,
 				 BUTTRESS_CSE_AUTHENTICATE_TIMEOUT_US);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "CSE authenticate timeout\n");
+		dev_err(dev, "CSE authenticate timeout\n");
 		goto out_unlock;
 	}
 
 	if ((data & mask) == fail) {
-		dev_err(&isp->pdev->dev, "CSE boot_load failed\n");
+		dev_err(dev, "CSE boot_load failed\n");
 		ret = -EINVAL;
 		goto out_unlock;
 	}
 
-	dev_info(&isp->pdev->dev, "CSE authenticate_run done\n");
+	dev_info(dev, "CSE authenticate_run done\n");
 
 out_unlock:
 	mutex_unlock(&b->auth_mutex);
@@ -924,25 +892,6 @@ void ipu7_buttress_tsc_read(struct ipu7_device *isp, u64 *val)
 EXPORT_SYMBOL_NS_GPL(ipu7_buttress_tsc_read, INTEL_IPU7);
 
 #ifdef CONFIG_DEBUG_FS
-static int ipu7_buttress_start_tsc_sync_set(void *data, u64 val)
-{
-	struct ipu7_device *isp = data;
-
-	return ipu7_buttress_start_tsc_sync(isp);
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(ipu7_buttress_start_tsc_sync_fops, NULL,
-			ipu7_buttress_start_tsc_sync_set, "%llu\n");
-
-static int ipu7_buttress_tsc_get(void *data, u64 *val)
-{
-	ipu7_buttress_tsc_read(data, val);
-
-	return 0;
-}
-DEFINE_SIMPLE_ATTRIBUTE(ipu7_buttress_tsc_fops, ipu7_buttress_tsc_get,
-			NULL, "%llu\n");
-
 static int ipu7_buttress_isys_freq_get(void *data, u64 *val)
 {
 	u32 freq;
@@ -953,6 +902,52 @@ static int ipu7_buttress_isys_freq_get(void *data, u64 *val)
 		return ret;
 
 	*val = freq;
+
+	return 0;
+}
+
+static void ipu7_buttress_set_isys_ratio(struct ipu7_device *isp,
+					 u32 isys_ratio)
+{
+	struct ipu7_buttress_ctrl *ctrl = isp->isys->ctrl;
+
+	mutex_lock(&isp->buttress.power_mutex);
+
+	if (ctrl->ratio == isys_ratio)
+		goto out_mutex_unlock;
+
+	ctrl->ratio = isys_ratio;
+	if (!ctrl->started)
+		return;
+
+	writel(ctrl->ratio << ctrl->ratio_shift |
+	       ctrl->cdyn << ctrl->cdyn_shift,
+	       isp->base + ctrl->freq_ctl);
+
+out_mutex_unlock:
+	mutex_unlock(&isp->buttress.power_mutex);
+}
+
+static int ipu7_buttress_set_isys_freq(struct ipu7_device *isp, u64 freq)
+{
+	u32 ratio = freq * 50 / 3;
+	int ret;
+
+	if (freq < BUTTRESS_MIN_FORCE_IS_RATIO ||
+	    freq > BUTTRESS_MAX_FORCE_IS_RATIO)
+		return -EINVAL;
+
+	ret = pm_runtime_get_sync(&isp->isys->auxdev.dev);
+	if (ret < 0) {
+		pm_runtime_put(&isp->isys->auxdev.dev);
+		dev_err(&isp->pdev->dev, "Runtime PM failed (%d)\n", ret);
+		return ret;
+	}
+
+	if (freq)
+		ipu7_buttress_set_isys_ratio(isp, ratio);
+
+	pm_runtime_put(&isp->isys->auxdev.dev);
 
 	return 0;
 }
@@ -977,16 +972,6 @@ int ipu7_buttress_debugfs_init(struct ipu7_device *isp)
 	if (!dir)
 		return -ENOMEM;
 
-	file = debugfs_create_file("start_tsc_sync", 0200, dir, isp,
-				   &ipu7_buttress_start_tsc_sync_fops);
-	if (!file)
-		goto err;
-
-	file = debugfs_create_file("tsc", 0400, dir, isp,
-				   &ipu7_buttress_tsc_fops);
-	if (!file)
-		goto err;
-
 	file = debugfs_create_file("psys_freq", 0400, dir, isp,
 				   &ipu7_buttress_psys_freq_fops);
 	if (!file)
@@ -1002,50 +987,6 @@ err:
 	debugfs_remove_recursive(dir);
 	return -ENOMEM;
 }
-
-#endif /* CONFIG_DEBUG_FS */
-
-u64 ipu7_buttress_tsc_ticks_to_ns(u64 ticks, const struct ipu7_device *isp)
-{
-	u64 ns = ticks * 10000;
-
-	/*
-	 * converting TSC tick count to ns is calculated by:
-	 * Example (TSC clock frequency is 19.2MHz):
-	 * ns = ticks * 1000 000 000 / 19.2Mhz
-	 *    = ticks * 1000 000 000 / 19200000Hz
-	 *    = ticks * 10000 / 192 ns
-	 */
-	return div_u64(ns, isp->buttress.ref_clk);
-}
-EXPORT_SYMBOL_NS_GPL(ipu7_buttress_tsc_ticks_to_ns, INTEL_IPU7);
-
-u32 ipu7_buttress_get_ref_clk(const struct ipu7_device *isp)
-{
-	return isp->buttress.ref_clk;
-}
-EXPORT_SYMBOL_NS_GPL(ipu7_buttress_get_ref_clk, INTEL_IPU7);
-
-/* trigger uc control to wakeup fw */
-void ipu7_buttress_wakeup_is_uc(const struct ipu7_device *isp)
-{
-	u32 val;
-
-	val = readl(isp->base + BUTTRESS_REG_DRV_IS_UCX_CONTROL_STATUS);
-	val |= UCX_CTL_WAKEUP;
-	writel(val, isp->base + BUTTRESS_REG_DRV_IS_UCX_CONTROL_STATUS);
-}
-EXPORT_SYMBOL_NS_GPL(ipu7_buttress_wakeup_is_uc, INTEL_IPU7);
-
-void ipu7_buttress_wakeup_ps_uc(const struct ipu7_device *isp)
-{
-	u32 val;
-
-	val = readl(isp->base + BUTTRESS_REG_DRV_PS_UCX_CONTROL_STATUS);
-	val |= UCX_CTL_WAKEUP;
-	writel(val, isp->base + BUTTRESS_REG_DRV_PS_UCX_CONTROL_STATUS);
-}
-EXPORT_SYMBOL_NS_GPL(ipu7_buttress_wakeup_ps_uc, INTEL_IPU7);
 
 static ssize_t psys_fused_min_freq_show(struct device *dev,
 					struct device_attribute *attr,
@@ -1082,9 +1023,48 @@ static ssize_t psys_fused_efficient_freq_show(struct device *dev,
 }
 
 static DEVICE_ATTR_RO(psys_fused_efficient_freq);
+#endif /* CONFIG_DEBUG_FS */
+
+u64 ipu7_buttress_tsc_ticks_to_ns(u64 ticks, const struct ipu7_device *isp)
+{
+	u64 ns = ticks * 10000;
+
+	/*
+	 * converting TSC tick count to ns is calculated by:
+	 * Example (TSC clock frequency is 19.2MHz):
+	 * ns = ticks * 1000 000 000 / 19.2Mhz
+	 *    = ticks * 1000 000 000 / 19200000Hz
+	 *    = ticks * 10000 / 192 ns
+	 */
+	return div_u64(ns, isp->buttress.ref_clk);
+}
+EXPORT_SYMBOL_NS_GPL(ipu7_buttress_tsc_ticks_to_ns, INTEL_IPU7);
+
+/* trigger uc control to wakeup fw */
+void ipu7_buttress_wakeup_is_uc(const struct ipu7_device *isp)
+{
+	u32 val;
+
+	val = readl(isp->base + BUTTRESS_REG_DRV_IS_UCX_CONTROL_STATUS);
+	val |= UCX_CTL_WAKEUP;
+	writel(val, isp->base + BUTTRESS_REG_DRV_IS_UCX_CONTROL_STATUS);
+}
+EXPORT_SYMBOL_NS_GPL(ipu7_buttress_wakeup_is_uc, INTEL_IPU7);
+
+void ipu7_buttress_wakeup_ps_uc(const struct ipu7_device *isp)
+{
+	u32 val;
+
+	val = readl(isp->base + BUTTRESS_REG_DRV_PS_UCX_CONTROL_STATUS);
+	val |= UCX_CTL_WAKEUP;
+	writel(val, isp->base + BUTTRESS_REG_DRV_PS_UCX_CONTROL_STATUS);
+}
+EXPORT_SYMBOL_NS_GPL(ipu7_buttress_wakeup_ps_uc, INTEL_IPU7);
 
 static void ipu7_buttress_setup(struct ipu7_device *isp)
 {
+	struct device *dev = &isp->pdev->dev;
+
 	/* program PB BAR */
 	writel(0, isp->pb_base + GLOBAL_INTERRUPT_MASK);
 	writel(0x100, isp->pb_base + BAR2_MISC_CONFIG);
@@ -1092,13 +1072,13 @@ static void ipu7_buttress_setup(struct ipu7_device *isp)
 	if (is_ipu7p5(isp->hw_ver)) {
 		writel(BIT(14), isp->pb_base + TLBID_HASH_ENABLE_63_32);
 		writel(BIT(9), isp->pb_base + TLBID_HASH_ENABLE_95_64);
-		dev_dbg(&isp->pdev->dev, "PTL TLBID_HASH %x %x\n",
+		dev_dbg(dev, "PTL TLBID_HASH %x %x\n",
 			readl(isp->pb_base + TLBID_HASH_ENABLE_63_32),
 			readl(isp->pb_base + TLBID_HASH_ENABLE_95_64));
 	} else {
 		writel(BIT(22), isp->pb_base + TLBID_HASH_ENABLE_63_32);
 		writel(BIT(1), isp->pb_base + TLBID_HASH_ENABLE_127_96);
-		dev_dbg(&isp->pdev->dev, "TLBID_HASH %x %x\n",
+		dev_dbg(dev, "TLBID_HASH %x %x\n",
 			readl(isp->pb_base + TLBID_HASH_ENABLE_63_32),
 			readl(isp->pb_base + TLBID_HASH_ENABLE_127_96));
 	}
@@ -1123,15 +1103,14 @@ int ipu7_buttress_init(struct ipu7_device *isp)
 {
 	int ret, ipc_reset_retry = BUTTRESS_CSE_IPC_RESET_RETRY;
 	struct ipu7_buttress *b = &isp->buttress;
+	struct device *dev = &isp->pdev->dev;
 	u32 val;
 
 	mutex_init(&b->power_mutex);
 	mutex_init(&b->auth_mutex);
 	mutex_init(&b->cons_mutex);
 	mutex_init(&b->ipc_mutex);
-	init_completion(&b->ish.send_complete);
 	init_completion(&b->cse.send_complete);
-	init_completion(&b->ish.recv_complete);
 	init_completion(&b->cse.recv_complete);
 
 	b->cse.nack = BUTTRESS_CSE2IUDATA0_IPC_NACK;
@@ -1143,61 +1122,58 @@ int ipu7_buttress_init(struct ipu7_device *isp)
 	b->cse.data0_in = BUTTRESS_REG_CSE2IUDATA0;
 	b->cse.data0_out = BUTTRESS_REG_IU2CSEDATA0;
 
-	/* no ISH on IPU7 */
-	memset(&b->ish, 0, sizeof(b->ish));
 	INIT_LIST_HEAD(&b->constraints);
 
 	isp->secure_mode = ipu7_buttress_get_secure_mode(isp);
 	val = readl(isp->base + BUTTRESS_REG_IPU_SKU);
-	dev_info(&isp->pdev->dev,
-		 "IPU%u SKU %u in %s mode mask 0x%x\n", val & 0xf,
+	dev_info(dev, "IPU%u SKU %u in %s mode mask 0x%x\n", val & 0xf,
 		 (val >> 4) & 0x7, isp->secure_mode ? "secure" : "non-secure",
 		 readl(isp->base + BUTTRESS_REG_CAMERA_MASK));
 	b->wdt_cached_value = readl(isp->base + BUTTRESS_REG_IDLE_WDT);
 	b->ref_clk = 384;
 
 	ipu7_buttress_setup(isp);
+#ifdef CONFIG_DEBUG_FS
 
-	ret = device_create_file(&isp->pdev->dev,
-				 &dev_attr_psys_fused_min_freq);
+	ret = device_create_file(dev, &dev_attr_psys_fused_min_freq);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "Create min freq file failed\n");
+		dev_err(dev, "Create min freq file failed\n");
 		goto err_mutex_destroy;
 	}
 
-	ret = device_create_file(&isp->pdev->dev,
-				 &dev_attr_psys_fused_max_freq);
+	ret = device_create_file(dev, &dev_attr_psys_fused_max_freq);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "Create max freq file failed\n");
+		dev_err(dev, "Create max freq file failed\n");
 		goto err_remove_min_freq_file;
 	}
 
-	ret = device_create_file(&isp->pdev->dev,
-				 &dev_attr_psys_fused_efficient_freq);
+	ret = device_create_file(dev, &dev_attr_psys_fused_efficient_freq);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "Create efficient freq file failed\n");
+		dev_err(dev, "Create efficient freq file failed\n");
 		goto err_remove_max_freq_file;
 	}
+#endif
 
 	/* Retry couple of times in case of CSE initialization is delayed */
 	do {
 		ret = ipu7_buttress_ipc_reset(isp, &b->cse);
 		if (ret) {
-			dev_warn(&isp->pdev->dev,
-				 "IPC reset protocol failed, retrying\n");
+			dev_warn(dev, "IPC reset protocol failed, retrying\n");
 		} else {
-			dev_dbg(&isp->pdev->dev, "IPC reset done\n");
+			dev_dbg(dev, "IPC reset done\n");
 			return 0;
 		}
 	} while (ipc_reset_retry--);
 
-	dev_err(&isp->pdev->dev, "IPC reset protocol failed\n");
+	dev_err(dev, "IPC reset protocol failed\n");
 
+#ifdef CONFIG_DEBUG_FS
 err_remove_max_freq_file:
-	device_remove_file(&isp->pdev->dev, &dev_attr_psys_fused_max_freq);
+	device_remove_file(dev, &dev_attr_psys_fused_max_freq);
 err_remove_min_freq_file:
-	device_remove_file(&isp->pdev->dev, &dev_attr_psys_fused_min_freq);
+	device_remove_file(dev, &dev_attr_psys_fused_min_freq);
 err_mutex_destroy:
+#endif
 	mutex_destroy(&b->power_mutex);
 	mutex_destroy(&b->auth_mutex);
 	mutex_destroy(&b->cons_mutex);
@@ -1212,11 +1188,12 @@ void ipu7_buttress_exit(struct ipu7_device *isp)
 
 	writel(0, isp->base + BUTTRESS_REG_IRQ_ENABLE);
 
+#ifdef CONFIG_DEBUG_FS
 	device_remove_file(&isp->pdev->dev,
 			   &dev_attr_psys_fused_efficient_freq);
 	device_remove_file(&isp->pdev->dev, &dev_attr_psys_fused_max_freq);
 	device_remove_file(&isp->pdev->dev, &dev_attr_psys_fused_min_freq);
-
+#endif
 	mutex_destroy(&b->power_mutex);
 	mutex_destroy(&b->auth_mutex);
 	mutex_destroy(&b->cons_mutex);

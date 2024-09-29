@@ -49,7 +49,6 @@ struct ipu7_buttress_ipc {
 struct ipu7_buttress {
 	struct mutex power_mutex, auth_mutex, cons_mutex, ipc_mutex;
 	struct ipu7_buttress_ipc cse;
-	struct ipu7_buttress_ipc ish;
 	struct list_head constraints;
 	struct ipu7_buttress_fused_freqs psys_fused_freqs;
 	u32 psys_min_freq;
@@ -57,11 +56,6 @@ struct ipu7_buttress {
 	u8 psys_force_ratio;
 	bool force_suspend;
 	u32 ref_clk;
-};
-
-enum ipu7_buttress_ipc_domain {
-	IPU_BUTTRESS_IPC_CSE,
-	IPU_BUTTRESS_IPC_ISH,
 };
 
 struct ipu7_buttress_constraint {
@@ -78,8 +72,9 @@ struct ipu7_ipc_buttress_bulk_msg {
 
 int ipu7_buttress_ipc_reset(struct ipu7_device *isp,
 			    struct ipu7_buttress_ipc *ipc);
-int ipu7_buttress_power(struct device *dev,
-			struct ipu7_buttress_ctrl *ctrl, bool on);
+int ipu7_buttress_powerup(struct device *dev, struct ipu7_buttress_ctrl *ctrl);
+int ipu7_buttress_powerdown(struct device *dev,
+			    struct ipu7_buttress_ctrl *ctrl);
 bool ipu7_buttress_get_secure_mode(struct ipu7_device *isp);
 int ipu7_buttress_authenticate(struct ipu7_device *isp);
 int ipu7_buttress_reset_authentication(struct ipu7_device *isp);
@@ -101,5 +96,4 @@ void ipu7_buttress_restore(struct ipu7_device *isp);
 int ipu7_buttress_psys_freq_get(void *data, u64 *val);
 void ipu7_buttress_wakeup_is_uc(const struct ipu7_device *isp);
 void ipu7_buttress_wakeup_ps_uc(const struct ipu7_device *isp);
-u32 ipu7_buttress_get_ref_clk(const struct ipu7_device *isp);
 #endif /* IPU7_BUTTRESS_H */

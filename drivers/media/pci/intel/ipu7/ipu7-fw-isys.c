@@ -202,9 +202,9 @@ void ipu7_fw_isys_put_resp(struct ipu7_isys *isys)
 }
 
 #ifdef ENABLE_FW_OFFLINE_LOGGER
-/* TODO: address the memory crash caused by offline logger */
 int ipu7_fw_isys_get_log(struct ipu7_isys *isys)
 {
+	u32 log_size = sizeof(struct ia_gofo_msg_log_info_ts);
 	struct device *dev = &isys->adev->auxdev.dev;
 	struct isys_fw_log *fw_log = isys->fw_log;
 	struct ia_gofo_msg_log *log_msg;
@@ -238,12 +238,16 @@ int ipu7_fw_isys_get_log(struct ipu7_isys *isys)
 			return -EIO;
 		}
 
+		if (log_size + fw_log->head - fw_log->addr >
+		    FW_LOG_BUF_SIZE)
+			fw_log->head = fw_log->addr;
+
 		memcpy(fw_log->head, (void *)&log_msg->log_info_ts,
 		       sizeof(struct ia_gofo_msg_log_info_ts));
 
 		fw_log->count = count;
-		fw_log->head += sizeof(struct ia_gofo_msg_log_info_ts);
-		fw_log->size += sizeof(struct ia_gofo_msg_log_info_ts);
+		fw_log->head += log_size;
+		fw_log->size += log_size;
 
 		ipu7_syscom_put_token(isys->adev->syscom,
 				      IPU_INSYS_OUTPUT_LOG_QUEUE);
@@ -312,6 +316,8 @@ void ipu7_fw_isys_dump_stream_cfg(struct device *dev,
 			cfg->output_pins[i].link.dest);
 		dev_dbg(dev, "\t.link.use_sw_managed = %d\n",
 			cfg->output_pins[i].link.use_sw_managed);
+		dev_dbg(dev, "\t.link.is_snoop = %d\n",
+			cfg->output_pins[i].link.is_snoop);
 
 		dev_dbg(dev, "\t.crop.line_top = %d\n",
 			cfg->output_pins[i].crop.line_top);

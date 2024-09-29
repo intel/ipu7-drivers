@@ -12,9 +12,7 @@
 #include <linux/minmax.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
-#include <linux/version.h>
 
-#include <media/ipu7-isys.h>
 #include <media/media-entity.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -60,11 +58,7 @@ s64 ipu7_isys_csi2_get_link_freq(struct ipu7_isys_csi2 *csi2)
 		return -EINVAL;
 
 	dev = &csi2->isys->adev->auxdev.dev;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 0, 0)
-	src_pad = media_entity_remote_pad(csi2->asd.sd.entity.pads);
-#else
 	src_pad = media_entity_remote_source_pad_unique(&csi2->asd.sd.entity);
-#endif
 	if (IS_ERR(src_pad)) {
 		dev_err(dev, "can't get source pad of %s (%ld)\n",
 			csi2->asd.sd.name, PTR_ERR(src_pad));
@@ -154,15 +148,14 @@ static void csi2_irq_en(struct ipu7_isys_csi2 *csi2, bool enable)
 	}
 }
 
-static void ipu7_isys_csi2_disable_stream(struct ipu7_isys_csi2 *csi2,
-					  struct ipu7_isys_csi2_config *cfg)
+static void ipu7_isys_csi2_disable_stream(struct ipu7_isys_csi2 *csi2)
 {
 	struct ipu7_isys *isys = csi2->isys;
 	void __iomem *isys_base = isys->pdata->base;
 	unsigned int port, nlanes, offset, val;
 
-	port = cfg->port;
-	nlanes = cfg->nlanes;
+	port = csi2->port;
+	nlanes = csi2->nlanes;
 
 	csi2_irq_en(csi2, 0);
 
@@ -174,12 +167,11 @@ static void ipu7_isys_csi2_disable_stream(struct ipu7_isys_csi2 *csi2,
 	writel(val, isys_base + offset + CSI_PORT_CLK_GATE);
 
 	/* power down */
-	ipu7_isys_csi_phy_powerdown(isys, cfg);
+	ipu7_isys_csi_phy_powerdown(csi2);
 	writel(0x4, isys_base + offset + CLK_DIV_FACTOR_APB_CLK);
 }
 
-static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2,
-					struct ipu7_isys_csi2_config *cfg)
+static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2)
 {
 	struct ipu7_isys *isys = csi2->isys;
 	struct device *dev = &isys->adev->auxdev.dev;
@@ -187,8 +179,8 @@ static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2,
 	unsigned int port, nlanes, offset, val;
 	int ret;
 
-	port = cfg->port;
-	nlanes = cfg->nlanes;
+	port = csi2->port;
+	nlanes = csi2->nlanes;
 
 	offset = IS_IO_GPREGS_BASE;
 	/* port AB support aggregation, configure 2 ports */
@@ -210,7 +202,7 @@ static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2,
 	writel(1, isys_base + offset + CSI2_ADPL_CSI_RX_ERR_IRQ_CLEAR_EN);
 
 	/* Enable DPHY power */
-	ret = ipu7_isys_csi_phy_powerup(isys, cfg);
+	ret = ipu7_isys_csi_phy_powerup(csi2);
 	if (ret) {
 		dev_err(dev, "CSI-%d PHY power up failed %d\n", port, ret);
 		return ret;
@@ -220,51 +212,33 @@ static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2,
 	return 0;
 }
 
-static int set_stream(struct v4l2_subdev *sd, int enable)
-{
-	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
-	struct ipu7_isys_csi2 *csi2 = to_ipu7_isys_csi2(asd);
-	struct ipu7_isys_stream *stream =
-		container_of(media_entity_pipeline(&sd->entity),
-			     struct ipu7_isys_stream, pipe);
-	struct v4l2_subdev *esd =
-		media_entity_to_v4l2_subdev(stream->external->entity);
-	struct ipu7_isys_csi2_config *cfg;
-
-	stream->asd = asd;
-	cfg = v4l2_get_subdev_hostdata(esd);
-
-	dev_dbg(&csi2->isys->adev->auxdev.dev,
-		"stream %s CSI2-%u with %u lanes\n", enable ? "on" : "off",
-		cfg->port,  cfg->nlanes);
-
-	if (!enable) {
-		ipu7_isys_csi2_disable_stream(csi2, cfg);
-		return 0;
-	}
-
-	return ipu7_isys_csi2_enable_stream(csi2, cfg);
-}
-
-static const struct v4l2_subdev_video_ops csi2_sd_video_ops = {
-	.s_stream = set_stream,
-};
-
 static int ipu7_isys_csi2_set_sel(struct v4l2_subdev *sd,
 				  struct v4l2_subdev_state *state,
 				  struct v4l2_subdev_selection *sel)
 {
 	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
 	struct device *dev = &asd->isys->adev->auxdev.dev;
-	struct v4l2_mbus_framefmt *sink_ffmt =
-		ipu7_isys_get_ffmt(sd, state, CSI2_PAD_SINK, sel->which);
-	struct v4l2_mbus_framefmt *src_ffmt =
-		ipu7_isys_get_ffmt(sd, state, sel->pad, sel->which);
+	struct v4l2_mbus_framefmt *sink_ffmt;
+	struct v4l2_mbus_framefmt *src_ffmt;
+	struct v4l2_rect *crop;
 
 	if (sel->pad == CSI2_PAD_SINK || sel->target != V4L2_SEL_TGT_CROP)
 		return -EINVAL;
 
-	mutex_lock(&asd->mutex);
+	sink_ffmt = v4l2_subdev_state_get_opposite_stream_format(state,
+								 sel->pad,
+								 sel->stream);
+	if (!sink_ffmt)
+		return -EINVAL;
+
+	src_ffmt = v4l2_subdev_state_get_format(state, sel->pad, sel->stream);
+	if (!src_ffmt)
+		return -EINVAL;
+
+	crop = v4l2_subdev_state_get_crop(state, sel->pad, sel->stream);
+	if (!crop)
+		return -EINVAL;
+
 	/* Only vertical cropping is supported */
 	sel->r.left = 0;
 	sel->r.width = sink_ffmt->width;
@@ -273,7 +247,7 @@ static int ipu7_isys_csi2_set_sel(struct v4l2_subdev *sd,
 		sel->r.top &= ~1;
 	sel->r.height = clamp(sel->r.height & ~1, IPU_ISYS_MIN_HEIGHT,
 			      sink_ffmt->height - sel->r.top);
-	*ipu7_isys_get_crop(sd, state, sel->pad, sel->which) = sel->r;
+	*crop = sel->r;
 
 	/* update source pad format */
 	src_ffmt->width = sel->r.width;
@@ -285,7 +259,6 @@ static int ipu7_isys_csi2_set_sel(struct v4l2_subdev *sd,
 	dev_dbg(dev, "set crop for %s sel: %d,%d,%d,%d code: 0x%x\n",
 		sd->name, sel->r.left, sel->r.top, sel->r.width, sel->r.height,
 		src_ffmt->code);
-	mutex_unlock(&asd->mutex);
 
 	return 0;
 }
@@ -294,17 +267,23 @@ static int ipu7_isys_csi2_get_sel(struct v4l2_subdev *sd,
 				  struct v4l2_subdev_state *state,
 				  struct v4l2_subdev_selection *sel)
 {
-	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
-	struct v4l2_mbus_framefmt *sink_ffmt =
-		ipu7_isys_get_ffmt(sd, state, CSI2_PAD_SINK, sel->which);
-	struct v4l2_rect *crop =
-		ipu7_isys_get_crop(sd, state, sel->pad, sel->which);
+	struct v4l2_mbus_framefmt *sink_ffmt;
+	struct v4l2_rect *crop;
 	int ret = 0;
 
 	if (sd->entity.pads[sel->pad].flags & MEDIA_PAD_FL_SINK)
 		return -EINVAL;
 
-	mutex_lock(&asd->mutex);
+	sink_ffmt = v4l2_subdev_state_get_opposite_stream_format(state,
+								 sel->pad,
+								 sel->stream);
+	if (!sink_ffmt)
+		return -EINVAL;
+
+	crop = v4l2_subdev_state_get_crop(state, sel->pad, sel->stream);
+	if (!crop)
+		return -EINVAL;
+
 	switch (sel->target) {
 	case V4L2_SEL_TGT_CROP_DEFAULT:
 	case V4L2_SEL_TGT_CROP_BOUNDS:
@@ -319,28 +298,63 @@ static int ipu7_isys_csi2_get_sel(struct v4l2_subdev *sd,
 	default:
 		ret = -EINVAL;
 	}
-	mutex_unlock(&asd->mutex);
 
 	return ret;
 }
 
+static int ipu7_isys_csi2_enable_streams(struct v4l2_subdev *sd,
+					 struct v4l2_subdev_state *state,
+					 u32 pad, u64 streams_mask)
+{
+	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
+	struct ipu7_isys_csi2 *csi2 = to_ipu7_isys_csi2(asd);
+
+	if (csi2->stream_count++)
+		return 0;
+
+	dev_dbg(&csi2->isys->adev->auxdev.dev,
+		"stream on CSI2-%u with %u lanes\n", csi2->port, csi2->nlanes);
+
+	return ipu7_isys_csi2_enable_stream(csi2);
+}
+
+static int ipu7_isys_csi2_disable_streams(struct v4l2_subdev *sd,
+					  struct v4l2_subdev_state *state,
+					  u32 pad, u64 streams_mask)
+{
+	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
+	struct ipu7_isys_csi2 *csi2 = to_ipu7_isys_csi2(asd);
+
+	if (--csi2->stream_count)
+		return 0;
+
+	dev_dbg(&csi2->isys->adev->auxdev.dev,
+		"stream off CSI2-%u with %u lanes\n", csi2->port, csi2->nlanes);
+
+	ipu7_isys_csi2_disable_stream(csi2);
+
+	return 0;
+}
+
 static const struct v4l2_subdev_pad_ops csi2_sd_pad_ops = {
-	.link_validate = ipu7_isys_subdev_link_validate,
-	.get_fmt = ipu7_isys_subdev_get_fmt,
+	.get_fmt = v4l2_subdev_get_fmt,
 	.set_fmt = ipu7_isys_subdev_set_fmt,
 	.get_selection = ipu7_isys_csi2_get_sel,
 	.set_selection = ipu7_isys_csi2_set_sel,
 	.enum_mbus_code = ipu7_isys_subdev_enum_mbus_code,
+	.enable_streams = ipu7_isys_csi2_enable_streams,
+	.disable_streams = ipu7_isys_csi2_disable_streams,
+	.set_routing = ipu7_isys_subdev_set_routing,
 };
 
 static const struct v4l2_subdev_ops csi2_sd_ops = {
 	.core = &csi2_sd_core_ops,
-	.video = &csi2_sd_video_ops,
 	.pad = &csi2_sd_pad_ops,
 };
 
 static const struct media_entity_operations csi2_entity_ops = {
 	.link_validate = v4l2_subdev_link_validate,
+	.has_pad_interdep = v4l2_subdev_has_pad_interdep,
 };
 
 void ipu7_isys_csi2_cleanup(struct ipu7_isys_csi2 *csi2)
@@ -349,9 +363,7 @@ void ipu7_isys_csi2_cleanup(struct ipu7_isys_csi2 *csi2)
 		return;
 
 	v4l2_device_unregister_subdev(&csi2->asd.sd);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
 	v4l2_subdev_cleanup(&csi2->asd.sd);
-#endif
 	ipu7_isys_subdev_cleanup(&csi2->asd);
 	csi2->isys = NULL;
 }
@@ -389,14 +401,12 @@ int ipu7_isys_csi2_init(struct ipu7_isys_csi2 *csi2,
 		 IPU_ISYS_ENTITY_PREFIX " CSI2 %u", index);
 	v4l2_set_subdevdata(&csi2->asd.sd, &csi2->asd);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
 	ret = v4l2_subdev_init_finalize(&csi2->asd.sd);
 	if (ret) {
 		dev_err(dev, "failed to init v4l2 subdev (%d)\n", ret);
 		goto fail;
 	}
 
-#endif
 	ret = v4l2_device_register_subdev(&isys->v4l2_dev, &csi2->asd.sd);
 	if (ret) {
 		dev_err(dev, "failed to register v4l2 subdev (%d)\n", ret);
@@ -423,8 +433,8 @@ void ipu7_isys_csi2_sof_event_by_stream(struct ipu7_isys_stream *stream)
 	ev.u.frame_sync.frame_sequence = atomic_fetch_inc(&stream->sequence);
 	v4l2_event_queue(vdev, &ev);
 
-	dev_dbg(dev, "sof_event::csi2-%i sequence: %i\n",
-		csi2->port, ev.u.frame_sync.frame_sequence);
+	dev_dbg(dev, "sof_event::csi2-%i sequence: %i, vc: %d\n",
+		csi2->port, ev.u.frame_sync.frame_sequence, stream->vc);
 }
 
 void ipu7_isys_csi2_eof_event_by_stream(struct ipu7_isys_stream *stream)
@@ -435,4 +445,63 @@ void ipu7_isys_csi2_eof_event_by_stream(struct ipu7_isys_stream *stream)
 
 	dev_dbg(dev, "eof_event::csi2-%i sequence: %i\n",
 		csi2->port, frame_sequence);
+}
+
+int ipu7_isys_csi2_get_remote_desc(u32 source_stream,
+				   struct ipu7_isys_csi2 *csi2,
+				   struct media_entity *source_entity,
+				   struct v4l2_mbus_frame_desc_entry *entry,
+				   int *nr_queues)
+{
+	struct v4l2_mbus_frame_desc_entry *desc_entry = NULL;
+	struct device *dev = &csi2->isys->adev->auxdev.dev;
+	struct v4l2_mbus_frame_desc desc;
+	struct v4l2_subdev *source;
+	struct media_pad *pad;
+	unsigned int i;
+	int ret;
+
+	source = media_entity_to_v4l2_subdev(source_entity);
+	if (!source)
+		return -EPIPE;
+
+	pad = media_pad_remote_pad_first(&csi2->asd.pad[CSI2_PAD_SINK]);
+	if (!pad)
+		return -EPIPE;
+
+	ret = v4l2_subdev_call(source, pad, get_frame_desc, pad->index, &desc);
+	if (ret)
+		return ret;
+
+	if (desc.type != V4L2_MBUS_FRAME_DESC_TYPE_CSI2) {
+		dev_err(dev, "Unsupported frame descriptor type\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < desc.num_entries; i++) {
+		if (source_stream == desc.entry[i].stream) {
+			desc_entry = &desc.entry[i];
+			break;
+		}
+	}
+
+	if (!desc_entry) {
+		dev_err(dev, "Failed to find stream %u from remote subdev\n",
+			source_stream);
+		return -EINVAL;
+	}
+
+	if (desc_entry->bus.csi2.vc >= NR_OF_CSI2_VC) {
+		dev_err(dev, "invalid vc %d\n", desc_entry->bus.csi2.vc);
+		return -EINVAL;
+	}
+
+	*entry = *desc_entry;
+
+	for (i = 0; i < desc.num_entries; i++) {
+		if (desc_entry->bus.csi2.vc == desc.entry[i].bus.csi2.vc)
+			(*nr_queues)++;
+	}
+
+	return 0;
 }

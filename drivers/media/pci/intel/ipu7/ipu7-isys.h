@@ -146,6 +146,16 @@ struct isys_fw_msgs {
 	dma_addr_t dma_addr;
 };
 
+struct ipu7_isys_csi2_config {
+	unsigned int nlanes;
+	unsigned int port;
+};
+
+struct sensor_async_sd {
+	struct v4l2_async_connection asc;
+	struct ipu7_isys_csi2_config csi2;
+};
+
 struct isys_fw_msgs *ipu7_get_fw_msg_buf(struct ipu7_isys_stream *stream);
 void ipu7_put_fw_msg_buf(struct ipu7_isys *isys, u64 data);
 void ipu7_cleanup_fw_msg_bufs(struct ipu7_isys *isys);

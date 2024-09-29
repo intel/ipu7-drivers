@@ -45,10 +45,13 @@ struct output_pin_data {
 	struct ipu7_isys_queue *aq;
 };
 
+/*
+ * Align with firmware stream. Each stream represents a CSI virtual channel.
+ * May map to multiple video devices
+ */
 struct ipu7_isys_stream {
 	struct mutex mutex;
-	struct media_pipeline pipe;
-	struct media_pad *external;
+	struct media_entity *source_entity;
 	atomic_t sequence;
 	atomic_t buf_id;
 	unsigned int seq_index;
@@ -70,10 +73,8 @@ struct ipu7_isys_stream {
 
 	struct output_pin_data output_pins[IPU_INSYS_OUTPUT_PINS];
 	int error;
+	u8 vc;
 };
-
-#define to_ipu7_isys_pipeline(__pipe)				\
-	container_of((__pipe), struct ipu7_isys_stream, pipe)
 
 struct ipu7_isys_video {
 	struct ipu7_isys_queue aq;
@@ -83,8 +84,12 @@ struct ipu7_isys_video {
 	struct video_device vdev;
 	struct v4l2_pix_format pix_fmt;
 	struct ipu7_isys *isys;
+	struct ipu7_isys_csi2 *csi2;
 	struct ipu7_isys_stream *stream;
 	unsigned int streaming;
+	u32 source_stream;
+	u8 vc;
+	u8 dt;
 };
 
 #define ipu7_isys_queue_to_video(__aq)			\
@@ -93,24 +98,21 @@ struct ipu7_isys_video {
 extern const struct ipu7_isys_pixelformat ipu7_isys_pfmts[];
 
 const struct ipu7_isys_pixelformat *ipu7_isys_get_isys_format(u32 pixelformat);
-int ipu7_isys_vidioc_querycap(struct file *file, void *fh,
-			      struct v4l2_capability *cap);
-
-int ipu7_isys_vidioc_enum_fmt(struct file *file, void *fh,
-			      struct v4l2_fmtdesc *f);
-void ipu7_isys_prepare_fw_cfg_default(struct ipu7_isys_video *av,
-				      struct ipu7_insys_stream_cfg *cfg);
-int ipu7_isys_video_prepare_streaming(struct ipu7_isys_video *av);
-int ipu7_isys_video_set_streaming(struct ipu7_isys_video *av,
-				  unsigned int state,
+int ipu7_isys_video_prepare_stream(struct ipu7_isys_video *av,
+				   struct media_entity *source_entity,
+				   int nr_queues);
+int ipu7_isys_video_set_streaming(struct ipu7_isys_video *av, int state,
 				  struct ipu7_isys_buffer_list *bl);
 int ipu7_isys_fw_open(struct ipu7_isys *isys);
 void ipu7_isys_fw_close(struct ipu7_isys *isys);
+int ipu7_isys_setup_video(struct ipu7_isys_video *av,
+			  struct media_entity **source_entity, int *nr_queues);
 int ipu7_isys_video_init(struct ipu7_isys_video *av);
 void ipu7_isys_video_cleanup(struct ipu7_isys_video *av);
 void ipu7_isys_put_stream(struct ipu7_isys_stream *stream);
-struct ipu7_isys_stream *ipu7_isys_get_stream(struct ipu7_isys *isys);
 struct ipu7_isys_stream *
 ipu7_isys_query_stream_by_handle(struct ipu7_isys *isys,
 				 u8 stream_handle);
+struct ipu7_isys_stream *
+ipu7_isys_query_stream_by_source(struct ipu7_isys *isys, int source, u8 vc);
 #endif /* IPU7_ISYS_VIDEO_H */

@@ -23,14 +23,8 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/types.h>
-#include <linux/version.h>
 #include <linux/vmalloc.h>
-#if defined(CONFIG_INTEL_IPU7_ACPI)
-#include <media/ipu7-acpi.h>
-#endif
-#if LINUX_VERSION_CODE > KERNEL_VERSION(6, 6, 0)
 #include <media/ipu-bridge.h>
-#endif
 
 #include "abi/ipu7_fw_common_abi.h"
 
@@ -39,21 +33,13 @@
 #include "ipu7-buttress.h"
 #include "ipu7-buttress-regs.h"
 #include "ipu7-cpd.h"
+#include "ipu7-dma.h"
 #include "ipu7-isys-csi2-regs.h"
 #include "ipu7-mmu.h"
 #include "ipu7-platform-regs.h"
 
 #define IPU_PCI_BAR		0
 #define IPU_PCI_PBBAR		4
-
-#if defined(CONFIG_INTEL_IPU7_ACPI)
-static int isys_init_acpi_add_device(struct device *dev, void *priv,
-				     struct ipu7_isys_csi2_config *csi2,
-				     bool reprobe)
-{
-	return 0;
-}
-#endif
 
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 static unsigned int ipu7_tpg_offsets[] = {
@@ -1410,40 +1396,26 @@ ipu7_isys_init(struct pci_dev *pdev, struct device *parent,
 	       const struct ipu7_isys_internal_pdata *ipdata,
 	       unsigned int nr)
 {
-	struct ipu7_bus_device *isys_adev;
-	struct ipu7_isys_pdata *pdata;
-#if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
-	struct ipu7_isys_subdev_pdata *acpi_pdata;
-#endif
 	struct fwnode_handle *fwnode = dev_fwnode(&pdev->dev);
+	struct ipu7_bus_device *isys_adev;
+	struct device *dev = &pdev->dev;
+	struct ipu7_isys_pdata *pdata;
 	int ret;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
 	ret = ipu7_isys_check_fwnode_graph(fwnode);
 	if (ret) {
 		if (fwnode && !IS_ERR_OR_NULL(fwnode->secondary)) {
-			dev_err(&pdev->dev,
-				"fwnode graph has no endpoints connection\n");
-			return ERR_PTR(-EINVAL);
-		}
-	}
-#else
-	ret = ipu7_isys_check_fwnode_graph(fwnode);
-	if (ret) {
-		if (fwnode && !IS_ERR_OR_NULL(fwnode->secondary)) {
-			dev_err(&pdev->dev,
+			dev_err(dev,
 				"fwnode graph has no endpoints connection\n");
 			return ERR_PTR(-EINVAL);
 		}
 
-		ret = ipu_bridge_init(&pdev->dev, ipu_bridge_parse_ssdb);
+		ret = ipu_bridge_init(dev, ipu_bridge_parse_ssdb);
 		if (ret) {
-			dev_err_probe(&pdev->dev, ret,
-				      "IPU bridge init failed\n");
+			dev_err_probe(dev, ret, "IPU bridge init failed\n");
 			return ERR_PTR(ret);
 		}
 	}
-#endif
 
 	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
@@ -1455,29 +1427,16 @@ ipu7_isys_init(struct pci_dev *pdev, struct device *parent,
 	isys_adev = ipu7_bus_initialize_device(pdev, parent, pdata, ctrl,
 					       IPU_ISYS_NAME);
 	if (IS_ERR(isys_adev)) {
-		dev_err_probe(&pdev->dev, PTR_ERR(isys_adev),
+		dev_err_probe(dev, PTR_ERR(isys_adev),
 			      "ipu7_bus_initialize_device isys failed\n");
 		kfree(pdata);
 		return ERR_CAST(isys_adev);
 	}
 
-#if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
-	if (!spdata) {
-		dev_err(&pdev->dev, "No subdevice info provided");
-		ipu7_get_acpi_devices(isys, &isys->dev, &acpi_pdata, NULL,
-				      isys_init_acpi_add_device);
-		pdata->spdata = acpi_pdata;
-	} else {
-		dev_info(&pdev->dev, "Subdevice info found");
-		ipu7_get_acpi_devices(isys, &isys->dev, &acpi_pdata, &spdata,
-				      isys_init_acpi_add_device);
-	}
-#endif
-
-	isys_adev->mmu = ipu7_mmu_init(&pdev->dev, base, ISYS_MMID,
+	isys_adev->mmu = ipu7_mmu_init(dev, base, ISYS_MMID,
 				       &ipdata->hw_variant);
 	if (IS_ERR(isys_adev->mmu)) {
-		dev_err_probe(&pdev->dev, PTR_ERR(isys_adev),
+		dev_err_probe(dev, PTR_ERR(isys_adev),
 			      "ipu7_mmu_init(isys_adev->mmu) failed\n");
 		put_device(&isys_adev->auxdev.dev);
 		kfree(pdata);
@@ -1622,8 +1581,11 @@ static int ipu7_map_fw_code_region(struct ipu7_bus_device *sys,
 {
 	struct sg_table *sgt = &sys->fw_sgt;
 	struct device *dev = &sys->auxdev.dev;
+	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
+	struct ipu7_device *isp = adev->isp;
 	struct page **pages;
 	unsigned long n_pages, i;
+	unsigned long attr = 0;
 	int ret;
 
 	n_pages = PHYS_PFN(PAGE_ALIGN(size));
@@ -1651,7 +1613,10 @@ static int ipu7_map_fw_code_region(struct ipu7_bus_device *sys,
 		goto out;
 	}
 
-	ret = dma_map_sgtable(dev, sgt, DMA_TO_DEVICE, 0);
+	if (!isp->secure_mode)
+		attr |= DMA_ATTR_RESERVE_REGION;
+
+	ret = dma_map_sgtable(dev, sgt, DMA_TO_DEVICE, attr);
 	if (ret < 0) {
 		dev_err(dev, "map fw code[%lu pages %u nents] failed\n",
 			n_pages, sgt->nents);
@@ -1757,7 +1722,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	void __iomem *psys_base = NULL;
 	struct ipu7_buttress_ctrl *isys_ctrl = NULL, *psys_ctrl = NULL;
 	unsigned int dma_mask = IPU_DMA_MASK;
-	struct fwnode_handle *fwnode = dev_fwnode(&pdev->dev);
+	struct fwnode_handle *fwnode = dev_fwnode(dev);
 	u32 is_es;
 	int ret;
 
@@ -1781,7 +1746,8 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	phys = pci_resource_start(pdev, IPU_PCI_BAR);
 	pb_phys = pci_resource_start(pdev, IPU_PCI_PBBAR);
-	dev_info(dev, "BAR0 base %llx BAR2 base %llx\n", phys, pb_phys);
+	dev_info(dev, "IPU7 PCI BAR0 base %llx BAR2 base %llx\n",
+		 phys, pb_phys);
 
 	ret = pcim_iomap_regions(pdev, BIT(IPU_PCI_BAR) | BIT(IPU_PCI_PBBAR),
 				 pci_name(pdev));
@@ -1796,7 +1762,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	isp->base = iomap[IPU_PCI_BAR];
 	isp->pb_base = iomap[IPU_PCI_PBBAR];
-	dev_info(dev, "BAR0 mapped at %p BAR2 mapped at %p\n",
+	dev_info(dev, "IPU7 PCI BAR0 mapped at %p\n BAR2 mapped at %p\n",
 		 isp->base, isp->pb_base);
 
 	pci_set_drvdata(pdev, isp);
@@ -1841,7 +1807,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (ret)
 		return ret;
 
-	dev_info(dev, "cpd file name: %s\n", isp->cpd_fw_name);
+	dev_info(dev, "firmware cpd file: %s\n", isp->cpd_fw_name);
 
 	ret = request_firmware(&isp->cpd_fw, isp->cpd_fw_name, dev);
 	if (ret) {
@@ -1939,7 +1905,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 #ifdef CONFIG_DEBUG_FS
 	ret = ipu7_init_debugfs(isp);
 	if (ret) {
-		dev_err_probe(dev, ret, "Failed to initialize debugfs");
+		dev_err_probe(dev, ret, "Failed to initialize debugfs\n");
 		goto out_ipu_bus_del_devices;
 	}
 #endif
@@ -2026,8 +1992,6 @@ static void ipu7_pci_reset_done(struct pci_dev *pdev)
 	dev_warn(&pdev->dev, "FLR completed\n");
 }
 
-#ifdef CONFIG_PM
-
 /*
  * PCI base driver code requires driver to provide these to enable
  * PCI device level PM state transitions (D0<->D3)
@@ -2052,17 +2016,17 @@ static int ipu7_resume(struct device *dev)
 
 	ret = ipu7_buttress_ipc_reset(isp, &b->cse);
 	if (ret)
-		dev_err(&isp->pdev->dev, "IPC reset protocol failed!\n");
+		dev_err(dev, "IPC reset protocol failed!\n");
 
 	ret = pm_runtime_get_sync(&isp->psys->auxdev.dev);
 	if (ret < 0) {
-		dev_err(&isp->psys->auxdev.dev, "Failed to get runtime PM\n");
+		dev_err(dev, "Failed to get runtime PM\n");
 		return 0;
 	}
 
 	ret = ipu7_buttress_authenticate(isp);
 	if (ret)
-		dev_err(&isp->pdev->dev, "FW authentication failed(%d)\n", ret);
+		dev_err(dev, "FW authentication failed(%d)\n", ret);
 
 	pm_runtime_put(&isp->psys->auxdev.dev);
 
@@ -2083,8 +2047,7 @@ static int ipu7_runtime_resume(struct device *dev)
 		isp->ipc_reinit = false;
 		ret = ipu7_buttress_ipc_reset(isp, &b->cse);
 		if (ret)
-			dev_err(&isp->pdev->dev,
-				"IPC reset protocol failed!\n");
+			dev_err(dev, "IPC reset protocol failed!\n");
 	}
 
 	return 0;
@@ -2096,11 +2059,6 @@ static const struct dev_pm_ops ipu7_pm_ops = {
 			   &ipu7_runtime_resume,
 			   NULL)
 };
-
-#define IPU_PM (&ipu7_pm_ops)
-#else
-#define IPU_PM NULL
-#endif
 
 static const struct pci_device_id ipu7_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IPU7_PCI_ID)},
@@ -2120,7 +2078,7 @@ static struct pci_driver ipu7_pci_driver = {
 	.probe = ipu7_pci_probe,
 	.remove = ipu7_pci_remove,
 	.driver = {
-		.pm = IPU_PM,
+		.pm = &ipu7_pm_ops,
 	},
 	.err_handler = &pci_err_handlers,
 };
