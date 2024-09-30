@@ -14,7 +14,6 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
-#include <linux/version.h>
 #include <linux/poll.h>
 #include <uapi/linux/sched/types.h>
 #include <linux/uaccess.h>
@@ -64,8 +63,9 @@ static int ipu7_psys_get_userpages(struct ipu7_dma_buf_attach *attach)
 	int npages, array_size;
 	struct page **pages;
 	struct sg_table *sgt;
-	int nr = 0;
 	int ret = -ENOMEM;
+	int nr = 0;
+	u32 flags;
 
 	start = (unsigned long)attach->userptr;
 	end = PAGE_ALIGN(start + attach->len);
@@ -76,46 +76,29 @@ static int ipu7_psys_get_userpages(struct ipu7_dma_buf_attach *attach)
 	if (!sgt)
 		return -ENOMEM;
 
-	if (attach->npages != 0) {
-		pages = attach->pages;
-		npages = attach->npages;
-		attach->vma_is_io = 1;
-		goto skip_pages;
-	}
+	WARN_ON_ONCE(attach->npages);
 
 	pages = kvzalloc(array_size, GFP_KERNEL);
 	if (!pages)
 		goto free_sgt;
 
 	mmap_read_lock(current->mm);
-
 	vma = vma_lookup(current->mm, start);
 	if (unlikely(!vma)) {
 		ret = -EFAULT;
 		goto error_up_read;
 	}
-
-	if (WARN_ON(vma->vm_flags & (VM_IO | VM_PFNMAP))) {
-		ret = -EINVAL;
-		goto error_up_read;
-	}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
-	nr = get_user_pages(start & PAGE_MASK, npages,
-			    FOLL_WRITE, pages, NULL);
-#else
-	nr = get_user_pages(start & PAGE_MASK, npages,
-			    FOLL_WRITE, pages);
-#endif
-	if (nr < npages)
-		goto error_up_read;
-
 	mmap_read_unlock(current->mm);
+
+	flags = FOLL_WRITE | FOLL_FORCE | FOLL_LONGTERM;
+	nr = pin_user_pages_fast(start & PAGE_MASK, npages,
+				 flags, pages);
+	if (nr < npages)
+		goto error;
 
 	attach->pages = pages;
 	attach->npages = npages;
 
-skip_pages:
 	ret = sg_alloc_table_from_pages(sgt, pages, npages,
 					start & ~PAGE_MASK, attach->len,
 					GFP_KERNEL);
@@ -129,17 +112,14 @@ skip_pages:
 error_up_read:
 	mmap_read_unlock(current->mm);
 error:
-	while (nr > 0)
-		put_page(pages[--nr]);
+	if (nr)
+		unpin_user_pages(pages, nr);
 
-	if (array_size <= PAGE_SIZE)
-		kfree(pages);
-	else
-		vfree(pages);
+	kvfree(pages);
 free_sgt:
 	kfree(sgt);
 
-	dev_err(attach->dev, "failed to get userpages:%d\n", ret);
+	pr_err("failed to get userpages:%d\n", ret);
 
 	return ret;
 }
@@ -149,14 +129,7 @@ static void ipu7_psys_put_userpages(struct ipu7_dma_buf_attach *attach)
 	if (!attach || !attach->userptr || !attach->sgt)
 		return;
 
-	if (!attach->vma_is_io) {
-		int i = attach->npages;
-
-		while (--i >= 0) {
-			set_page_dirty_lock(attach->pages[i]);
-			put_page(attach->pages[i]);
-		}
-	}
+	unpin_user_pages(attach->pages, attach->npages);
 
 	kvfree(attach->pages);
 
@@ -170,6 +143,7 @@ static int ipu7_dma_buf_attach(struct dma_buf *dbuf,
 {
 	struct ipu7_psys_kbuffer *kbuf = dbuf->priv;
 	struct ipu7_dma_buf_attach *ipu7_attach;
+	int ret;
 
 	ipu7_attach = kzalloc(sizeof(*ipu7_attach), GFP_KERNEL);
 	if (!ipu7_attach)
@@ -179,6 +153,13 @@ static int ipu7_dma_buf_attach(struct dma_buf *dbuf,
 	ipu7_attach->userptr = kbuf->userptr;
 
 	attach->priv = ipu7_attach;
+
+	ret = ipu7_psys_get_userpages(ipu7_attach);
+	if (ret) {
+		kfree(ipu7_attach);
+		return ret;
+	}
+
 	return 0;
 }
 
@@ -187,6 +168,7 @@ static void ipu7_dma_buf_detach(struct dma_buf *dbuf,
 {
 	struct ipu7_dma_buf_attach *ipu7_attach = attach->priv;
 
+	ipu7_psys_put_userpages(ipu7_attach);
 	kfree(ipu7_attach);
 	attach->priv = NULL;
 }
@@ -198,15 +180,10 @@ static struct sg_table *ipu7_dma_buf_map(struct dma_buf_attachment *attach,
 	unsigned long attrs;
 	int ret;
 
-	ret = ipu7_psys_get_userpages(ipu7_attach);
-	if (ret)
-		return NULL;
-
 	attrs = DMA_ATTR_SKIP_CPU_SYNC;
 	ret = dma_map_sgtable(attach->dev, ipu7_attach->sgt, dir, attrs);
 	if (ret < 0) {
-		dev_dbg(attach->dev, "buf map failed\n");
-
+		dev_err(attach->dev, "buf map failed\n");
 		return ERR_PTR(-EIO);
 	}
 
@@ -223,10 +200,7 @@ static struct sg_table *ipu7_dma_buf_map(struct dma_buf_attachment *attach,
 static void ipu7_dma_buf_unmap(struct dma_buf_attachment *attach,
 			       struct sg_table *sg, enum dma_data_direction dir)
 {
-	struct ipu7_dma_buf_attach *ipu7_attach = attach->priv;
-
 	dma_unmap_sgtable(attach->dev, sg, dir, DMA_ATTR_SKIP_CPU_SYNC);
-	ipu7_psys_put_userpages(ipu7_attach);
 }
 
 static int ipu7_dma_buf_mmap(struct dma_buf *dbuf, struct vm_area_struct *vma)
@@ -241,11 +215,9 @@ static void ipu7_dma_buf_release(struct dma_buf *buf)
 	if (!kbuf)
 		return;
 
-	if (kbuf->db_attach) {
-		dev_dbg(kbuf->db_attach->dev,
-			"releasing buffer %d\n", kbuf->fd);
+	if (kbuf->db_attach)
 		ipu7_psys_put_userpages(kbuf->db_attach->priv);
-	}
+
 	kfree(kbuf);
 }
 
@@ -255,13 +227,7 @@ static int ipu7_dma_buf_begin_cpu_access(struct dma_buf *dma_buf,
 	return -ENOTTY;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) ||		\
-	LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 255) ||	\
-	LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 71)
 static int ipu7_dma_buf_vmap(struct dma_buf *dmabuf, struct iosys_map *map)
-#else
-static int ipu7_dma_buf_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
-#endif
 {
 	struct dma_buf_attachment *attach;
 	struct ipu7_dma_buf_attach *ipu7_attach;
@@ -284,13 +250,7 @@ static int ipu7_dma_buf_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) ||		\
-	LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 255) ||	\
-	LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 71)
 static void ipu7_dma_buf_vunmap(struct dma_buf *dmabuf, struct iosys_map *map)
-#else
-static int ipu7_dma_buf_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
-#endif
 {
 	struct dma_buf_attachment *attach;
 	struct ipu7_dma_buf_attach *ipu7_attach;
@@ -486,40 +446,17 @@ static inline void ipu7_psys_kbuf_unmap(struct ipu7_psys_kbuffer *kbuf)
 		return;
 
 	kbuf->valid = false;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) ||		\
-	LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 255) ||	\
-	LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 71)
 	if (kbuf->kaddr) {
 		struct iosys_map dmap;
 
 		iosys_map_set_vaddr(&dmap, kbuf->kaddr);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
 		dma_buf_vunmap_unlocked(kbuf->dbuf, &dmap);
-#else
-		dma_buf_vunmap(kbuf->dbuf, &dmap);
-#endif
 	}
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && \
-	LINUX_VERSION_CODE != KERNEL_VERSION(5, 10, 46)
-	if (kbuf->kaddr) {
-		struct dma_buf_map dmap;
 
-		dma_buf_map_set_vaddr(&dmap, kbuf->kaddr);
-		dma_buf_vunmap(kbuf->dbuf, &dmap);
-	}
-#endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
 	if (kbuf->sgt)
 		dma_buf_unmap_attachment_unlocked(kbuf->db_attach,
 						  kbuf->sgt,
 						  DMA_BIDIRECTIONAL);
-#else
-	if (kbuf->sgt)
-		dma_buf_unmap_attachment(kbuf->db_attach,
-					 kbuf->sgt,
-					 DMA_BIDIRECTIONAL);
-#endif
 	if (kbuf->db_attach)
 		dma_buf_detach(kbuf->dbuf, kbuf->db_attach);
 	dma_buf_put(kbuf->dbuf);
@@ -681,16 +618,9 @@ static int ipu7_psys_mapbuf_locked(int fd, struct ipu7_psys_fh *fh,
 {
 	struct device *dev = &fh->psys->adev->auxdev.dev;
 	struct dma_buf *dbuf;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) ||		\
-	LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 255) ||	\
-	LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 71)
 	struct iosys_map dmap = {
 		.is_iomem = false,
 	};
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && \
-	LINUX_VERSION_CODE != KERNEL_VERSION(5, 10, 46)
-	struct dma_buf_map dmap;
-#endif
 	int ret;
 
 	dbuf = dma_buf_get(fd);
@@ -751,12 +681,8 @@ static int ipu7_psys_mapbuf_locked(int fd, struct ipu7_psys_fh *fh,
 		goto kbuf_map_fail;
 	}
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
 	kbuf->sgt = dma_buf_map_attachment_unlocked(kbuf->db_attach,
 						    DMA_BIDIRECTIONAL);
-#else
-	kbuf->sgt = dma_buf_map_attachment(kbuf->db_attach, DMA_BIDIRECTIONAL);
-#endif
 	if (IS_ERR_OR_NULL(kbuf->sgt)) {
 		ret = -EINVAL;
 		kbuf->sgt = NULL;
@@ -766,11 +692,11 @@ static int ipu7_psys_mapbuf_locked(int fd, struct ipu7_psys_fh *fh,
 
 	kbuf->dma_addr = sg_dma_address(kbuf->sgt->sgl);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+	/* no need vmap for imported dmabufs */
+	if (!kbuf->userptr)
+		goto mapbuf_end;
+
 	ret = dma_buf_vmap_unlocked(kbuf->dbuf, &dmap);
-#else
-	ret = dma_buf_vmap(kbuf->dbuf, &dmap);
-#endif
 	if (ret) {
 		dev_dbg(dev, "dma buf vmap failed\n");
 		goto kbuf_map_fail;
@@ -1130,7 +1056,6 @@ static void ipu7_psys_dev_release(struct device *dev)
 {
 }
 
-#ifdef CONFIG_PM
 static int psys_runtime_pm_resume(struct device *dev)
 {
 	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
@@ -1236,9 +1161,6 @@ static const struct dev_pm_ops psys_pm_ops = {
 };
 
 #define PSYS_PM_OPS (&psys_pm_ops)
-#else
-#define PSYS_PM_OPS NULL
-#endif
 
 #ifdef CONFIG_DEBUG_FS
 static int ipu7_psys_icache_prefetch_sp_get(void *data, u64 *val)
@@ -1289,7 +1211,6 @@ DEFINE_SIMPLE_ATTRIBUTE(psys_icache_prefetch_isp_fops,
 			ipu7_psys_icache_prefetch_isp_get,
 			ipu7_psys_icache_prefetch_isp_set, "%llu\n");
 
-#define FW_LOG_BUF_SIZE  (2 * 1024 * 1024)
 static int psys_fw_log_init(struct ipu7_psys *psys)
 {
 	struct device *dev = &psys->adev->auxdev.dev;
@@ -1325,6 +1246,7 @@ static ssize_t fwlog_read(struct file *file, char __user *userbuf, size_t size,
 	struct ipu7_psys *psys = file->private_data;
 	struct psys_fw_log *fw_log = psys->fw_log;
 	struct device *dev = &psys->adev->auxdev.dev;
+	u32 log_size;
 	void *buf;
 	int ret = 0;
 
@@ -1336,18 +1258,23 @@ static ssize_t fwlog_read(struct file *file, char __user *userbuf, size_t size,
 		return -ENOMEM;
 
 	mutex_lock(&fw_log->mutex);
-	if (!psys->fw_log->size) {
-		dev_warn(dev, "no available psys fw log");
+	if (!fw_log->size) {
+		dev_warn(dev, "no available fw log\n");
 		mutex_unlock(&fw_log->mutex);
 		goto free_and_return;
 	}
 
-	memcpy(buf, psys->fw_log->addr, psys->fw_log->size);
-	dev_dbg(dev, "copy %d bytes fw log to user\n", psys->fw_log->size);
+	if (fw_log->size > FW_LOG_BUF_SIZE)
+		log_size = FW_LOG_BUF_SIZE;
+	else
+		log_size = fw_log->size;
+
+	memcpy(buf, fw_log->addr, log_size);
+	dev_dbg(dev, "copy %d bytes fw log to user\n", log_size);
 	mutex_unlock(&fw_log->mutex);
 
 	ret = simple_read_from_buffer(userbuf, size, pos, buf,
-				      psys->fw_log->size);
+				      log_size);
 free_and_return:
 	kvfree(buf);
 
@@ -1410,6 +1337,10 @@ static void run_fw_init_work(struct work_struct *work)
 		dev_info(&auxdev->dev, "FW init done\n");
 	}
 }
+
+static const struct bus_type ipu7_psys_bus = {
+	.name = "intel-ipu7-psys",
+};
 
 static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 			   const struct auxiliary_device_id *auxdev_id)
@@ -1499,6 +1430,7 @@ static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 		goto out_mutex_destroy;
 	}
 
+	psys->dev.bus = &ipu7_psys_bus;
 	psys->dev.parent = dev;
 	psys->dev.devt = MKDEV(MAJOR(ipu7_psys_dev_t), minor);
 	psys->dev.release = ipu7_psys_dev_release;
@@ -1509,8 +1441,10 @@ static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 		goto out_fw_release;
 	}
 
+#ifdef CONFIG_DEBUG_FS
 	psys_fw_log_init(psys);
 
+#endif
 	/* Add the hw stepping information to caps */
 	strscpy(psys->caps.dev_model, IPU_MEDIA_DEV_MODEL_NAME,
 		sizeof(psys->caps.dev_model));
@@ -1552,10 +1486,10 @@ out_unregister_chr_region:
 static void ipu7_psys_remove(struct auxiliary_device *auxdev)
 {
 	struct ipu7_psys *psys = dev_get_drvdata(&auxdev->dev);
-	struct ipu7_device *isp = psys->adev->isp;
 	struct device *dev = &auxdev->dev;
-
 #ifdef CONFIG_DEBUG_FS
+	struct ipu7_device *isp = psys->adev->isp;
+
 	if (isp->ipu7_dir)
 		debugfs_remove_recursive(psys->debugfsdir);
 #endif
@@ -1583,13 +1517,11 @@ static irqreturn_t psys_isr_threaded(struct ipu7_bus_device *adev)
 	int r;
 
 	mutex_lock(&psys->mutex);
-#ifdef CONFIG_PM
 	r = pm_runtime_get_if_in_use(dev);
 	if (!r || WARN_ON_ONCE(r < 0)) {
 		mutex_unlock(&psys->mutex);
 		return IRQ_NONE;
 	}
-#endif
 
 	state = ipu7_boot_get_boot_state(adev);
 	if (IA_GOFO_FW_BOOT_STATE_IS_CRITICAL(state)) {

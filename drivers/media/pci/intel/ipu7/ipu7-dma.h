@@ -9,6 +9,7 @@
 #include <linux/dma-map-ops.h>
 #include <linux/iova.h>
 
+#define DMA_ATTR_RESERVE_REGION		BIT(31)
 struct ipu7_mmu_info;
 
 struct ipu7_dma_mapping {

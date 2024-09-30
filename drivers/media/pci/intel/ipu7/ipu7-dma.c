@@ -20,6 +20,7 @@
 #include "ipu7-bus.h"
 #include "ipu7-dma.h"
 #include "ipu7-mmu.h"
+#include "ipu7-platform-regs.h"
 
 struct pci_dev;
 
@@ -392,8 +393,9 @@ static int ipu7_dma_map_sg(struct device *dev, struct scatterlist *sglist,
 			   int nents, enum dma_data_direction dir,
 			   unsigned long attrs)
 {
-	struct ipu7_mmu *mmu = to_ipu7_bus_device(dev)->mmu;
-	struct pci_dev *pdev = to_ipu7_bus_device(dev)->isp->pdev;
+	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
+	struct pci_dev *pdev = adev->isp->pdev;
+	struct ipu7_mmu *mmu = adev->mmu;
 	struct scatterlist *sg;
 	struct iova *iova;
 	size_t npages = 0;
@@ -420,36 +422,27 @@ static int ipu7_dma_map_sg(struct device *dev, struct scatterlist *sglist,
 	for_each_sg(sglist, sg, count, i)
 		npages += PHYS_PFN(PAGE_ALIGN(sg_dma_len(sg)));
 
-	if (!mmu->dmap->mmu_info->fw_code_region_mapped &&
-	    PFN_PHYS(npages) == IPU_FW_CODE_REGION_SIZE &&
-	    !to_ipu7_bus_device(dev)->isp->secure_mode) {
+	if (attrs & DMA_ATTR_RESERVE_REGION) {
 		/*
-		 * Assume the first mapping with size IPU_FW_CODE_REGION_SIZE
-		 * is for fw code region. Allocate iova with size aligned to
-		 * IPU_FW_CODE_REGION_SIZE. Only apply for non-secure mode.
-		 */
-		/*
-		 * Reserve iova from 64MB to 80MB.
-		 * TODO: Get start address from register instead of hard coding
+		 * Reserve iova with size aligned to IPU_FW_CODE_REGION_SIZE.
+		 * Only apply for non-secure mode.
 		 */
 		unsigned long lo, hi;
 
-		lo = PFN_DOWN(IPU_FW_CODE_REGION_START);
-		hi = PFN_DOWN(IPU_FW_CODE_REGION_END);
+		lo = iova_pfn(&mmu->dmap->iovad, IPU_FW_CODE_REGION_START);
+		hi = iova_pfn(&mmu->dmap->iovad, IPU_FW_CODE_REGION_END) - 1;
 		iova = reserve_iova(&mmu->dmap->iovad, lo, hi);
 		if (!iova) {
 			dev_err(dev, "Reserve iova[%lx:%lx] failed.\n", lo, hi);
 			return -ENOMEM;
 		}
 		dev_dbg(dev, "iova[%lx:%lx] reserved for FW code.\n", lo, hi);
-		mmu->dmap->mmu_info->fw_code_region_mapped = true;
 	} else {
 		iova = alloc_iova(&mmu->dmap->iovad, npages,
 				  PHYS_PFN(dma_get_mask(dev)), 0);
+		if (!iova)
+			return -ENOMEM;
 	}
-
-	if (!iova)
-		return -ENOMEM;
 
 	dev_dbg(dev, "dmamap: iova low pfn %lu, high pfn %lu\n", iova->pfn_lo,
 		iova->pfn_hi);

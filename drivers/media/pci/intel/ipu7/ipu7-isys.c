@@ -27,12 +27,8 @@
 #include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/types.h>
-#include <linux/version.h>
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(6, 6, 0)
 #include <media/ipu-bridge.h>
-#endif
-#include <media/ipu7-isys.h>
 #include <media/media-entity.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-fwnode.h>
@@ -81,7 +77,8 @@ isys_complete_ext_device_registration(struct ipu7_isys *isys,
 
 	ret = media_create_pad_link(&sd->entity, i,
 				    &isys->csi2[csi2->port].asd.sd.entity,
-				    0, 0);
+				    0, MEDIA_LNK_FL_ENABLED |
+				    MEDIA_LNK_FL_IMMUTABLE);
 	if (ret) {
 		dev_warn(dev, "can't create link\n");
 		goto skip_unregister_subdev;
@@ -106,10 +103,10 @@ static void isys_stream_init(struct ipu7_isys *isys)
 		INIT_LIST_HEAD(&isys->streams[i].queues);
 		isys->streams[i].isys = isys;
 		isys->streams[i].stream_handle = i;
+		isys->streams[i].vc = INVALID_VC_ID;
 	}
 }
 
-#define FW_LOG_BUF_SIZE  (2 * 1024 * 1024)
 static int isys_fw_log_init(struct ipu7_isys *isys)
 {
 	struct device *dev = &isys->adev->auxdev.dev;
@@ -140,23 +137,13 @@ static int isys_fw_log_init(struct ipu7_isys *isys)
 }
 
 /* The .bound() notifier callback when a match is found */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
 static int isys_notifier_bound(struct v4l2_async_notifier *notifier,
 			       struct v4l2_subdev *sd,
-			       struct v4l2_async_subdev *asd)
-#else
-	static int isys_notifier_bound(struct v4l2_async_notifier *notifier,
-				       struct v4l2_subdev *sd,
-				       struct v4l2_async_connection *asc)
-#endif
+			       struct v4l2_async_connection *asc)
 {
 	struct ipu7_isys *isys = container_of(notifier,
 					      struct ipu7_isys, notifier);
 	struct device *dev = &isys->adev->auxdev.dev;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
-	struct sensor_async_subdev *s_asd =
-		container_of(asd, struct sensor_async_subdev, asd);
-#else
 	struct sensor_async_sd *s_asd =
 		container_of(asc, struct sensor_async_sd, asc);
 	int ret;
@@ -166,7 +153,6 @@ static int isys_notifier_bound(struct v4l2_async_notifier *notifier,
 		dev_err(dev, "instantiate vcm failed\n");
 		return ret;
 	}
-#endif
 
 	dev_info(dev, "bind %s nlanes is %d port is %d\n",
 		 sd->name, s_asd->csi2.nlanes, s_asd->csi2.port);
@@ -191,90 +177,6 @@ static const struct v4l2_async_notifier_operations isys_async_ops = {
 	.complete = isys_notifier_complete,
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
-static int isys_fwnode_parse(struct device *dev,
-			     struct v4l2_fwnode_endpoint *vep,
-			     struct v4l2_async_subdev *asd)
-{
-	struct sensor_async_subdev *s_asd =
-		container_of(asd, struct sensor_async_subdev, asd);
-
-	s_asd->csi2.port = vep->base.port;
-	s_asd->csi2.nlanes = vep->bus.mipi_csi2.num_data_lanes;
-
-	return 0;
-}
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 16, 0) &&	\
-	LINUX_VERSION_CODE != KERNEL_VERSION(5, 15, 71)
-static int isys_notifier_init(struct ipu7_isys *isys)
-{
-	struct ipu7_device *isp = isys->adev->isp;
-	size_t asd_struct_size = sizeof(struct sensor_async_subdev);
-	struct device *dev = &isys->adev->auxdev.dev;
-	int ret;
-
-	v4l2_async_notifier_init(&isys->notifier);
-
-	ret = v4l2_async_notifier_parse_fwnode_endpoints(&isp->pdev->dev,
-							 &isys->notifier,
-							 asd_struct_size,
-							 isys_fwnode_parse);
-
-	if (ret < 0) {
-		dev_err(dev, "v4l2 parse_fwnode_endpoints() failed: %d\n", ret);
-		return ret;
-	}
-
-	if (list_empty(&isys->notifier.asd_list)) {
-		/* isys probe could continue with async subdevs missing */
-		dev_warn(dev, "no subdev found in graph\n");
-		return 0;
-	}
-
-	isys->notifier.ops = &isys_async_ops;
-	ret = v4l2_async_notifier_register(&isys->v4l2_dev, &isys->notifier);
-	if (ret) {
-		dev_err(dev, "failed to register async notifier : %d\n", ret);
-		v4l2_async_notifier_cleanup(&isys->notifier);
-	}
-
-	return ret;
-}
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
-static int isys_notifier_init(struct ipu7_isys *isys)
-{
-	struct ipu7_device *isp = isys->adev->isp;
-	size_t asd_struct_size = sizeof(struct sensor_async_subdev);
-	struct device *dev = &isys->adev->auxdev.dev;
-	int ret;
-
-	v4l2_async_nf_init(&isys->notifier);
-	ret = v4l2_async_nf_parse_fwnode_endpoints(&isp->pdev->dev,
-						   &isys->notifier,
-						   asd_struct_size,
-						   isys_fwnode_parse);
-	if (ret < 0) {
-		dev_err(dev, "v4l2 parse_fwnode_endpoints() failed: %d\n", ret);
-		return ret;
-	}
-	if (list_empty(&isys->notifier.asd_list)) {
-		/* isys probe could continue with async subdevs missing */
-		dev_warn(dev, "no subdev found in graph\n");
-		return 0;
-	}
-
-	isys->notifier.ops = &isys_async_ops;
-	ret = v4l2_async_nf_register(&isys->v4l2_dev, &isys->notifier);
-	if (ret) {
-		dev_err(dev, "failed to register async notifier : %d\n", ret);
-		v4l2_async_nf_cleanup(&isys->notifier);
-	}
-
-	return ret;
-}
-#else
 static int isys_notifier_init(struct ipu7_isys *isys)
 {
 	const struct ipu7_isys_internal_csi2_pdata *csi2 =
@@ -331,28 +233,18 @@ err_parse:
 	isys->notifier.ops = &isys_async_ops;
 	ret = v4l2_async_nf_register(&isys->notifier);
 	if (ret) {
-		dev_err(dev, "failed to register async notifier : %d\n", ret);
+		dev_err(dev, "failed to register async notifier(%d)\n", ret);
 		v4l2_async_nf_cleanup(&isys->notifier);
 	}
 
 	return ret;
 }
-#endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 16, 0) &&	\
-	LINUX_VERSION_CODE != KERNEL_VERSION(5, 15, 71)
-static void isys_notifier_cleanup(struct ipu7_isys *isys)
-{
-	v4l2_async_notifier_unregister(&isys->notifier);
-	v4l2_async_notifier_cleanup(&isys->notifier);
-}
-#else
 static void isys_notifier_cleanup(struct ipu7_isys *isys)
 {
 	v4l2_async_nf_unregister(&isys->notifier);
 	v4l2_async_nf_cleanup(&isys->notifier);
 }
-#endif
 
 static void isys_unregister_video_devices(struct ipu7_isys *isys)
 {
@@ -459,6 +351,8 @@ static int isys_csi2_create_media_links(struct ipu7_isys *isys)
 				dev_err(dev, "CSI2 can't create link\n");
 				return ret;
 			}
+
+			av->csi2 = &isys->csi2[i];
 		}
 	}
 
@@ -596,9 +490,17 @@ static int isys_register_devices(struct ipu7_isys *isys)
 	goto out_csi2_unregister_subdevices;
 #endif
 
+#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
+	ret = v4l2_device_register_subdev_nodes(&isys->v4l2_dev);
+	if (ret)
+		goto out_isys_notifier_cleanup;
+#endif
+
 	return 0;
 
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
+out_isys_notifier_cleanup:
+	isys_notifier_cleanup(isys);
 out_tpg_unregister_subdevices:
 	isys_tpg_unregister_subdevices(isys);
 
@@ -633,7 +535,6 @@ static void isys_unregister_devices(struct ipu7_isys *isys)
 	media_device_cleanup(&isys->media_dev);
 }
 
-#ifdef CONFIG_PM
 static void enable_csi2_legacy_irq(struct ipu7_isys *isys, bool enable)
 {
 	u32 offset, mask;
@@ -754,8 +655,7 @@ static int isys_runtime_pm_suspend(struct device *dev)
 
 static int isys_suspend(struct device *dev)
 {
-	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
-	struct ipu7_isys *isys = ipu7_bus_get_drvdata(adev);
+	struct ipu7_isys *isys = dev_get_drvdata(dev);
 
 	/* If stream is open, refuse to suspend */
 	if (isys->stream_opened)
@@ -776,18 +676,13 @@ static const struct dev_pm_ops isys_pm_ops = {
 	.resume = isys_resume,
 };
 
-#define ISYS_PM_OPS (&isys_pm_ops)
-#else
-#define ISYS_PM_OPS NULL
-#endif
-
 static void isys_remove(struct auxiliary_device *auxdev)
 {
-	struct ipu7_bus_device *adev = auxdev_to_adev(auxdev);
 	struct ipu7_isys *isys = dev_get_drvdata(&auxdev->dev);
 	struct isys_fw_msgs *fwmsg, *safe;
-
 #ifdef CONFIG_DEBUG_FS
+	struct ipu7_bus_device *adev = auxdev_to_adev(auxdev);
+
 	if (adev->isp->ipu7_dir)
 		debugfs_remove_recursive(isys->debugfsdir);
 #endif
@@ -813,38 +708,15 @@ static void isys_remove(struct auxiliary_device *auxdev)
 }
 
 #ifdef CONFIG_DEBUG_FS
-static int ipu7_isys_icache_prefetch_get(void *data, u64 *val)
-{
-	struct ipu7_isys *isys = data;
-
-	*val = isys->icache_prefetch;
-	return 0;
-}
-
-static int ipu7_isys_icache_prefetch_set(void *data, u64 val)
-{
-	struct ipu7_isys *isys = data;
-
-	if (val != !!val)
-		return -EINVAL;
-
-	isys->icache_prefetch = val;
-
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(isys_icache_prefetch_fops,
-			ipu7_isys_icache_prefetch_get,
-			ipu7_isys_icache_prefetch_set, "%llu\n");
-
 static ssize_t fwlog_read(struct file *file, char __user *userbuf, size_t size,
 			  loff_t *pos)
 {
 	struct ipu7_isys *isys = file->private_data;
 	struct isys_fw_log *fw_log = isys->fw_log;
 	struct device *dev = &isys->adev->auxdev.dev;
-	void *buf;
+	u32 log_size;
 	int ret = 0;
+	void *buf;
 
 	if (!fw_log)
 		return 0;
@@ -854,18 +726,23 @@ static ssize_t fwlog_read(struct file *file, char __user *userbuf, size_t size,
 		return -ENOMEM;
 
 	mutex_lock(&fw_log->mutex);
-	if (!isys->fw_log->size) {
-		dev_warn(dev, "no available fw log");
+	if (!fw_log->size) {
+		dev_warn(dev, "no available fw log\n");
 		mutex_unlock(&fw_log->mutex);
 		goto free_and_return;
 	}
 
-	memcpy(buf, isys->fw_log->addr, isys->fw_log->size);
-	dev_info(dev, "copy %d bytes fw log to user...", isys->fw_log->size);
+	if (fw_log->size > FW_LOG_BUF_SIZE)
+		log_size = FW_LOG_BUF_SIZE;
+	else
+		log_size = fw_log->size;
+
+	memcpy(buf, fw_log->addr, log_size);
+	dev_info(dev, "copy %d bytes fw log to user...\n", log_size);
 	mutex_unlock(&fw_log->mutex);
 
 	ret = simple_read_from_buffer(userbuf, size, pos, buf,
-				      isys->fw_log->size);
+				      log_size);
 free_and_return:
 	kvfree(buf);
 
@@ -888,11 +765,6 @@ static int ipu7_isys_init_debugfs(struct ipu7_isys *isys)
 	if (IS_ERR(dir))
 		return -ENOMEM;
 
-	file = debugfs_create_file("icache_prefetch", 0600,
-				   dir, isys, &isys_icache_prefetch_fops);
-	if (IS_ERR(file))
-		goto err;
-
 	file = debugfs_create_file("fwlog", 0400,
 				   dir, isys, &isys_fw_log_fops);
 	if (IS_ERR(file))
@@ -910,10 +782,10 @@ err:
 static int alloc_fw_msg_bufs(struct ipu7_isys *isys, int amount)
 {
 	struct device *dev = &isys->adev->auxdev.dev;
-	dma_addr_t dma_addr;
 	struct isys_fw_msgs *addr;
-	unsigned int i;
+	dma_addr_t dma_addr;
 	unsigned long flags;
+	unsigned int i;
 
 	for (i = 0; i < amount; i++) {
 		addr = dma_alloc_attrs(dev, sizeof(struct isys_fw_msgs),
@@ -926,8 +798,10 @@ static int alloc_fw_msg_bufs(struct ipu7_isys *isys, int amount)
 		list_add(&addr->head, &isys->framebuflist);
 		spin_unlock_irqrestore(&isys->listlock, flags);
 	}
+
 	if (i == amount)
 		return 0;
+
 	spin_lock_irqsave(&isys->listlock, flags);
 	while (!list_empty(&isys->framebuflist)) {
 		addr = list_first_entry(&isys->framebuflist,
@@ -939,6 +813,7 @@ static int alloc_fw_msg_bufs(struct ipu7_isys *isys, int amount)
 		spin_lock_irqsave(&isys->listlock, flags);
 	}
 	spin_unlock_irqrestore(&isys->listlock, flags);
+
 	return -ENOMEM;
 }
 
@@ -948,18 +823,21 @@ struct isys_fw_msgs *ipu7_get_fw_msg_buf(struct ipu7_isys_stream *stream)
 	struct ipu7_isys *isys = stream->isys;
 	struct isys_fw_msgs *msg;
 	unsigned long flags;
+	int ret;
 
 	spin_lock_irqsave(&isys->listlock, flags);
 	if (list_empty(&isys->framebuflist)) {
 		spin_unlock_irqrestore(&isys->listlock, flags);
-		dev_warn(dev, "Frame list empty - Allocate more");
+		dev_dbg(dev, "Frame buffer list empty\n");
 
-		alloc_fw_msg_bufs(isys, 5);
+		ret = alloc_fw_msg_bufs(isys, 5);
+		if (ret < 0)
+			return NULL;
 
 		spin_lock_irqsave(&isys->listlock, flags);
 		if (list_empty(&isys->framebuflist)) {
 			spin_unlock_irqrestore(&isys->listlock, flags);
-			dev_err(dev, "Frame list empty");
+			dev_err(dev, "Frame list empty\n");
 			return NULL;
 		}
 	}
@@ -1028,14 +906,14 @@ static int isys_probe(struct auxiliary_device *auxdev,
 
 	isys->csi2 = devm_kcalloc(&auxdev->dev, csi2_pdata->nports,
 				  sizeof(*isys->csi2), GFP_KERNEL);
-	if (!isys->csi2)
-		return -ENOMEM;
+	if (!isys->csi2) {
+		ret = -ENOMEM;
+		goto out_runtime_put;
+	}
 
 	ret = ipu7_mmu_hw_init(adev->mmu);
-	if (ret) {
-		pm_runtime_put(&auxdev->dev);
-		return ret;
-	}
+	if (ret)
+		goto out_runtime_put;
 
 	spin_lock_init(&isys->streams_lock);
 	spin_lock_init(&isys->power_lock);
@@ -1055,9 +933,6 @@ static int isys_probe(struct auxiliary_device *auxdev,
 	isys->phy_rext_cal = 0;
 
 	isys_stream_init(isys);
-#ifndef CONFIG_PM
-	isys_setup_hw(isys);
-#endif
 
 #ifdef CONFIG_DEBUG_FS
 	/* Debug fs failure is not fatal. */
@@ -1095,6 +970,8 @@ out_cleanup:
 	mutex_destroy(&isys->stream_mutex);
 
 	ipu7_mmu_hw_cleanup(adev->mmu);
+
+out_runtime_put:
 	pm_runtime_put(&auxdev->dev);
 
 	return ret;
@@ -1134,7 +1011,7 @@ static void ipu7_isys_register_errors(struct ipu7_isys_csi2 *csi2)
 	if (!status)
 		return;
 
-	dev_dbg(&csi2->isys->adev->auxdev.dev, "csi2-%u error status 0x%08x",
+	dev_dbg(&csi2->isys->adev->auxdev.dev, "csi2-%u error status 0x%08x\n",
 		csi2->port, status);
 
 	writel(status & mask, csi2->base + offset + IRQ_CTL_CLEAR);
@@ -1261,7 +1138,6 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 		goto leave;
 	}
 
-	/* TODO: stream->error should be modified */
 	stream->error = err_info.err_code;
 
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
@@ -1358,59 +1234,48 @@ leave:
 	return 0;
 }
 
-/*
- * It has only one stream every pipeline of CSI2 now,
- * so get stream which is not NULL in av.
- */
-static struct ipu7_isys_stream *
-ipu7_isys_get_stream_by_av(struct ipu7_isys_csi2 *csi2)
-{
-	unsigned int i;
-
-	for (i = 0; i < NR_OF_CSI2_SRC_PADS; i++) {
-		if (csi2->av[i].stream)
-			return csi2->av[i].stream;
-	}
-
-	return NULL;
-}
-
 static void ipu7_isys_csi2_isr(struct ipu7_isys_csi2 *csi2)
 {
-	u32 status, offset;
+	u32 sync, offset;
 	struct ipu7_device *isp = csi2->isys->adev->isp;
-	struct ipu7_isys_stream *stream;
+	struct device *dev = &csi2->isys->adev->auxdev.dev;
+	struct ipu7_isys_stream *s;
+	u32 fe = 0;
+	u8 vc;
 
 	ipu7_isys_register_errors(csi2);
 
 	offset = IS_IO_CSI2_SYNC_LEGACY_IRQ_CTL_BASE(csi2->port);
-	status = readl(csi2->base + offset + IRQ_CTL_STATUS);
-	dev_dbg(&csi2->isys->adev->auxdev.dev, "csi2-%u sync status 0x%08x",
-		csi2->port, status);
-
-	writel(status, csi2->base + offset + IRQ_CTL_CLEAR);
-
-	stream = ipu7_isys_get_stream_by_av(csi2);
-	if (!stream) {
-		dev_err(&csi2->isys->adev->auxdev.dev,
-			"no stream for csi2-%u\n", csi2->port);
-		return;
-	}
-
-	if (status & IPU_CSI_RX_SYNC_FS_VC)
-		ipu7_isys_csi2_sof_event_by_stream(stream);
+	sync = readl(csi2->base + offset + IRQ_CTL_STATUS);
+	writel(sync, csi2->base + offset + IRQ_CTL_CLEAR);
+	dev_dbg(dev, "csi2-%u sync status 0x%08x\n", csi2->port, sync);
 
 	if (is_ipu7p5(isp->hw_ver)) {
-		status = readl(csi2->base + offset + IRQ1_CTL_STATUS);
-		writel(status, csi2->base + offset + IRQ1_CTL_CLEAR);
-		if (status & IPU7P5_CSI_RX_SYNC_FE_VC)
-			ipu7_isys_csi2_sof_event_by_stream(stream);
-
-		return;
+		fe = readl(csi2->base + offset + IRQ1_CTL_STATUS);
+		writel(fe, csi2->base + offset + IRQ1_CTL_CLEAR);
+		dev_dbg(dev, "csi2-%u FE status 0x%08x\n", csi2->port, fe);
 	}
 
-	if (status & IPU_CSI_RX_SYNC_FE_VC)
-		ipu7_isys_csi2_eof_event_by_stream(stream);
+	for (vc = 0; vc < NR_OF_CSI2_VC && (sync || fe); vc++) {
+		s = ipu7_isys_query_stream_by_source(csi2->isys,
+						     csi2->asd.source, vc);
+		if (!s)
+			continue;
+
+		if (is_ipu7p5(isp->hw_ver)) {
+			if (sync & IPU7P5_CSI_RX_SYNC_FS_VC & (1 << vc))
+				ipu7_isys_csi2_sof_event_by_stream(s);
+
+			if (fe & IPU7P5_CSI_RX_SYNC_FE_VC & (1 << vc))
+				ipu7_isys_csi2_eof_event_by_stream(s);
+		} else {
+			if (sync & IPU7_CSI_RX_SYNC_FS_VC & (1 << (vc * 2)))
+				ipu7_isys_csi2_sof_event_by_stream(s);
+
+			if (sync & IPU7_CSI_RX_SYNC_FE_VC & (2 << (vc * 2)))
+				ipu7_isys_csi2_eof_event_by_stream(s);
+		}
+	}
 }
 
 irqreturn_t isys_isr(struct ipu7_bus_device *adev)
@@ -1495,7 +1360,7 @@ static struct auxiliary_driver isys_driver = {
 	.remove = isys_remove,
 	.id_table = ipu7_isys_id_table,
 	.driver = {
-		.pm = ISYS_PM_OPS,
+		.pm = &isys_pm_ops,
 	},
 };
 

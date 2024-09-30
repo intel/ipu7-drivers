@@ -1189,9 +1189,9 @@ enum CSI2HOST_SELECTION {
 
 #define CSI_RX_NUM_IRQ				32
 
-/* TODO: support multiple VCs */
-#define IPU_CSI_RX_SYNC_FS_VC		BIT(0)
-#define IPU_CSI_RX_SYNC_FE_VC		BIT(1)
-#define IPU7P5_CSI_RX_SYNC_FE_VC	BIT(0)
+#define IPU7_CSI_RX_SYNC_FS_VC		0x55555555
+#define IPU7_CSI_RX_SYNC_FE_VC		0xaaaaaaaa
+#define IPU7P5_CSI_RX_SYNC_FS_VC	0xffff
+#define IPU7P5_CSI_RX_SYNC_FE_VC	0xffff
 
 #endif /* IPU7_ISYS_CSI2_REG_H */

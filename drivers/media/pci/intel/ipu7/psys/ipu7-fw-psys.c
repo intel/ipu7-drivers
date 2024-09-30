@@ -21,14 +21,12 @@
 
 #define BIT64(bit_num) (1 << (bit_num))
 
-/**
- * Node resource ID of INSYS, required when there is a link from INSYS to PSYS.
- */
+/* Node resource ID of INSYS, required when link INSYS to PSYS */
 #define IPU_PSYS_NODE_RSRC_ID_IS	(0xFEU)
 
-/**
- * Special node resource ID to identify a generic external node.  Required
- * when there is a link to/from IPU and that node.
+/*
+ * Special node resource ID to identify a generic external node.
+ * Required when there is a link to/from IPU and that node.
  */
 #define IPU_PSYS_NODE_RSRC_ID_EXT_IP	(0xFFU)
 
@@ -553,6 +551,7 @@ int ipu7_fw_psys_get_log(struct ipu7_psys *psys)
 	u32 count, fmt_id;
 	struct device *dev = &psys->adev->auxdev.dev;
 	struct psys_fw_log *fw_log = psys->fw_log;
+	u32 log_size = sizeof(struct ia_gofo_msg_log_info_ts);
 
 	token = ipu7_syscom_get_token(psys->adev->syscom,
 				      FWPS_MSG_ABI_OUT_LOG_QUEUE_ID);
@@ -577,16 +576,19 @@ int ipu7_fw_psys_get_log(struct ipu7_psys *psys)
 			dev_err(dev, "invalid log msg fmt_id 0x%x!\n", fmt_id);
 			ipu7_syscom_put_token(psys->adev->syscom,
 					      FWPS_MSG_ABI_OUT_LOG_QUEUE_ID);
-			mutex_unlock(&fw_log->mutex);
 			return -EIO;
 		}
+
+		if (log_size + fw_log->head - fw_log->addr >
+		    FW_LOG_BUF_SIZE)
+			fw_log->head = fw_log->addr;
 
 		memcpy(fw_log->head, (void *)&log_msg->log_info_ts,
 		       sizeof(struct ia_gofo_msg_log_info_ts));
 
 		fw_log->count = count;
-		fw_log->head += sizeof(struct ia_gofo_msg_log_info_ts);
-		fw_log->size += sizeof(struct ia_gofo_msg_log_info_ts);
+		fw_log->head += log_size;
+		fw_log->size += log_size;
 
 		ipu7_syscom_put_token(psys->adev->syscom,
 				      FWPS_MSG_ABI_OUT_LOG_QUEUE_ID);

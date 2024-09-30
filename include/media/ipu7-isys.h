@@ -6,7 +6,6 @@
 
 #include <linux/i2c.h>
 #include <linux/clkdev.h>
-#include <linux/version.h>
 #include <media/v4l2-async.h>
 
 struct ipu7_isys_csi2_config {
@@ -35,16 +34,9 @@ struct ipu7_isys_subdev_pdata {
 	struct ipu7_isys_clk_mapping *clk_map;
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
-struct sensor_async_subdev {
-	struct v4l2_async_subdev asd;
-	struct ipu7_isys_csi2_config csi2;
-};
-#else
 struct sensor_async_sd {
 	struct v4l2_async_connection asc;
 	struct ipu7_isys_csi2_config csi2;
 };
-#endif
 
 #endif /* MEDIA_IPU7_ISYS_H */

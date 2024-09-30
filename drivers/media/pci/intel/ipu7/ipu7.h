@@ -9,7 +9,6 @@
 #include <linux/list.h>
 #include <linux/pci.h>
 #include <linux/types.h>
-#include <linux/version.h>
 
 #include "ipu7-buttress.h"
 
@@ -27,6 +26,8 @@ struct firmware;
 
 #define IPU7_PCI_ID	0x645d
 #define IPU7P5_PCI_ID	0xb05d
+
+#define FW_LOG_BUF_SIZE  (2 * 1024 * 1024)
 
 enum ipu7_version {
 	IPU7_VER_INVALID = 0,
@@ -252,14 +253,4 @@ extern enum ipu7_version ipu7_ver;
 void ipu7_internal_pdata_init(struct ipu7_isys_internal_pdata *isys_ipdata,
 			      struct ipu7_psys_internal_pdata *psys_ipdata);
 void ipu7_dump_fw_error_log(const struct ipu7_bus_device *adev);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
-#include <media/media-entity.h>
-/* Helpers for building against various kernel versions */
-static inline
-struct media_pipeline *media_entity_pipeline(struct media_entity *entity)
-{
-	return entity->pipe;
-}
-
-#endif
 #endif /* IPU7_H */

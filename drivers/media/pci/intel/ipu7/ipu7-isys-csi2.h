@@ -34,9 +34,6 @@ struct ipu7_isys_stream;
 #define CSI2_CSI_RX_DLY_CNT_SETTLE_DLANE_A		85
 #define CSI2_CSI_RX_DLY_CNT_SETTLE_DLANE_B		-2
 
-#define CSI2_CROP_HOR		BIT(0)
-#define CSI2_CROP_VER		BIT(1)
-#define CSI2_CROP_MASK		(CSI2_CROP_VER | CSI2_CROP_HOR)
 /*
  * struct ipu7_isys_csi2
  *
@@ -53,6 +50,7 @@ struct ipu7_isys_csi2 {
 	u32 legacy_irq_mask;
 	unsigned int nlanes;
 	unsigned int port;
+	unsigned int stream_count;
 };
 
 #define ipu7_isys_subdev_to_csi2(__sd)			\
@@ -66,5 +64,9 @@ int ipu7_isys_csi2_init(struct ipu7_isys_csi2 *csi2, struct ipu7_isys *isys,
 void ipu7_isys_csi2_cleanup(struct ipu7_isys_csi2 *csi2);
 void ipu7_isys_csi2_sof_event_by_stream(struct ipu7_isys_stream *stream);
 void ipu7_isys_csi2_eof_event_by_stream(struct ipu7_isys_stream *stream);
-
+int ipu7_isys_csi2_get_remote_desc(u32 source_stream,
+				   struct ipu7_isys_csi2 *csi2,
+				   struct media_entity *source_entity,
+				   struct v4l2_mbus_frame_desc_entry *entry,
+				   int *nr_queues);
 #endif /* IPU7_ISYS_CSI2_H */

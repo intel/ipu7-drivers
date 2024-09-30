@@ -5,12 +5,7 @@
 
 #include <linux/device.h>
 #include <linux/export.h>
-#include <linux/version.h>
-#if LINUX_VERSION_CODE > KERNEL_VERSION(6, 0, 0)
 #include <linux/gfp_types.h>
-#else
-#include <linux/gfp.h>
-#endif
 #include <linux/pci.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
@@ -63,6 +58,7 @@ static int ipu7_cpd_validate_cpd(struct ipu7_device *isp,
 				 const void *cpd, unsigned long data_size)
 {
 	const struct ipu7_cpd_hdr *cpd_hdr = cpd;
+	struct device *dev = &isp->pdev->dev;
 	struct ipu7_cpd_ent *ent;
 	unsigned int i;
 	u8 len;
@@ -71,24 +67,24 @@ static int ipu7_cpd_validate_cpd(struct ipu7_device *isp,
 
 	/* Ensure cpd hdr is within moduledata */
 	if (data_size < len) {
-		dev_err(&isp->pdev->dev, "Invalid CPD moduledata size\n");
+		dev_err(dev, "Invalid CPD moduledata size\n");
 		return -EINVAL;
 	}
 
 	/* Check for CPD file marker */
 	if (cpd_hdr->hdr_mark != CPD_HDR_MARK) {
-		dev_err(&isp->pdev->dev, "Invalid CPD header marker\n");
+		dev_err(dev, "Invalid CPD header marker\n");
 		return -EINVAL;
 	}
 
 	/* Sanity check for CPD entry header */
 	if (cpd_hdr->ent_cnt != CPD_ENTRY_NUM) {
-		dev_err(&isp->pdev->dev, "Invalid CPD entry number %d\n",
+		dev_err(dev, "Invalid CPD entry number %d\n",
 			cpd_hdr->ent_cnt);
 		return -EINVAL;
 	}
 	if ((data_size - len) / sizeof(*ent) < cpd_hdr->ent_cnt) {
-		dev_err(&isp->pdev->dev, "Invalid CPD entry headers\n");
+		dev_err(dev, "Invalid CPD entry headers\n");
 		return -EINVAL;
 	}
 
@@ -97,7 +93,7 @@ static int ipu7_cpd_validate_cpd(struct ipu7_device *isp,
 	for (i = 0; i < cpd_hdr->ent_cnt; i++, ent++) {
 		if (data_size < ent->offset ||
 		    data_size - ent->offset < ent->len) {
-			dev_err(&isp->pdev->dev, "Invalid CPD entry %d\n", i);
+			dev_err(dev, "Invalid CPD entry %d\n", i);
 			return -EINVAL;
 		}
 	}
@@ -112,35 +108,32 @@ static int ipu7_cpd_validate_metadata(struct ipu7_device *isp,
 		ipu7_cpd_get_entry(cpd, CPD_METADATA_START_IDX + idx * 2);
 	const struct ipu7_cpd_metadata *metadata =
 		ipu7_cpd_get_metadata(cpd, idx);
+	struct device *dev = &isp->pdev->dev;
 
 	/* Sanity check for metadata size */
 	if (cpd_ent->len != sizeof(struct ipu7_cpd_metadata)) {
-		dev_err(&isp->pdev->dev, "Invalid metadata size\n");
+		dev_err(dev, "Invalid metadata size\n");
 		return -EINVAL;
 	}
 
 	/* Validate type and length of metadata sections */
 	if (metadata->attr.hdr.type != CPD_METADATA_ATTR) {
-		dev_err(&isp->pdev->dev,
-			"Invalid metadata attr type (%d)\n",
+		dev_err(dev, "Invalid metadata attr type (%d)\n",
 			metadata->attr.hdr.type);
 		return -EINVAL;
 	}
 	if (metadata->attr.hdr.len != sizeof(struct ipu7_cpd_metadata_attr)) {
-		dev_err(&isp->pdev->dev,
-			"Invalid metadata attr size (%d)\n",
+		dev_err(dev, "Invalid metadata attr size (%d)\n",
 			metadata->attr.hdr.len);
 		return -EINVAL;
 	}
 	if (metadata->ipl.hdr.type != CPD_METADATA_IPL) {
-		dev_err(&isp->pdev->dev,
-			"Invalid metadata ipl type (%d)\n",
+		dev_err(dev, "Invalid metadata ipl type (%d)\n",
 			metadata->ipl.hdr.type);
 		return -EINVAL;
 	}
 	if (metadata->ipl.hdr.len != sizeof(struct ipu7_cpd_metadata_ipl)) {
-		dev_err(&isp->pdev->dev,
-			"Invalid metadata ipl size (%d)\n",
+		dev_err(dev, "Invalid metadata ipl size (%d)\n",
 			metadata->ipl.hdr.len);
 		return -EINVAL;
 	}
@@ -151,6 +144,7 @@ static int ipu7_cpd_validate_metadata(struct ipu7_device *isp,
 int ipu7_cpd_validate_cpd_file(struct ipu7_device *isp, const void *cpd_file,
 			       unsigned long cpd_file_size)
 {
+	struct device *dev = &isp->pdev->dev;
 	struct ipu7_cpd_ent *ent;
 	unsigned int i;
 	int ret;
@@ -158,14 +152,14 @@ int ipu7_cpd_validate_cpd_file(struct ipu7_device *isp, const void *cpd_file,
 
 	ret = ipu7_cpd_validate_cpd(isp, cpd_file, cpd_file_size);
 	if (ret) {
-		dev_err(&isp->pdev->dev, "Invalid CPD in file\n");
+		dev_err(dev, "Invalid CPD in file\n");
 		return -EINVAL;
 	}
 
 	/* Sanity check for manifest size */
 	ent = ipu7_cpd_get_manifest(cpd_file);
 	if (ent->len > MAX_MANIFEST_SIZE) {
-		dev_err(&isp->pdev->dev, "Invalid manifest size\n");
+		dev_err(dev, "Invalid manifest size\n");
 		return -EINVAL;
 	}
 
@@ -173,7 +167,7 @@ int ipu7_cpd_validate_cpd_file(struct ipu7_device *isp, const void *cpd_file,
 	for (i = 0; i < CPD_BINARY_NUM; i++) {
 		ret = ipu7_cpd_validate_metadata(isp, cpd_file, i);
 		if (ret) {
-			dev_err(&isp->pdev->dev, "Invalid metadata%d\n", i);
+			dev_err(dev, "Invalid metadata%d\n", i);
 			return ret;
 		}
 	}
@@ -197,15 +191,14 @@ int ipu7_cpd_validate_cpd_file(struct ipu7_device *isp, const void *cpd_file,
 				break;
 		}
 		if (l < ONLINE_METADATA_LINES) {
-			dev_err(&isp->pdev->dev,
-				"Failed to parse fw binary%d info.\n", i);
+			dev_err(dev, "Failed to parse fw binary%d info.\n", i);
 			continue;
 		}
-		dev_info(&isp->pdev->dev, "FW binary%d info:\n", i);
-		dev_info(&isp->pdev->dev, "Name: %s\n", lines[1]);
-		dev_info(&isp->pdev->dev, "Version: %s\n", lines[2]);
-		dev_info(&isp->pdev->dev, "Timestamp: %s\n", lines[3]);
-		dev_info(&isp->pdev->dev, "Commit: %s\n", lines[4]);
+		dev_info(dev, "FW binary%d info:\n", i);
+		dev_info(dev, "Name: %s\n", lines[1]);
+		dev_info(dev, "Version: %s\n", lines[2]);
+		dev_info(dev, "Timestamp: %s\n", lines[3]);
+		dev_info(dev, "Commit: %s\n", lines[4]);
 	}
 	kfree(buf);
 

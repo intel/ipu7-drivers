@@ -108,42 +108,6 @@ static void tlb_invalidate(struct ipu7_mmu *mmu)
 	spin_unlock_irqrestore(&mmu->ready_lock, flags);
 }
 
-#ifdef DEBUG
-static void page_table_dump(struct ipu7_mmu_info *mmu_info)
-{
-	u32 l1_idx;
-
-	dev_dbg(mmu_info->dev, "begin IOMMU page table dump\n");
-
-	for (l1_idx = 0; l1_idx < ISP_L1PT_PTES; l1_idx++) {
-		u32 l2_idx;
-		u32 iova = (phys_addr_t)l1_idx << ISP_L1PT_SHIFT;
-
-		if (mmu_info->l1_pt[l1_idx] == mmu_info->dummy_l2_pteval)
-			continue;
-		dev_dbg(mmu_info->dev,
-			"l1 entry %u; iovas 0x%8.8x-0x%8.8x, at %pa\n",
-			l1_idx, iova, iova + ISP_PAGE_SIZE,
-			TBL_PHYS_ADDR(mmu_info->l1_pt[l1_idx]));
-
-		for (l2_idx = 0; l2_idx < ISP_L2PT_PTES; l2_idx++) {
-			u32 *l2_pt = mmu_info->l2_pts[l1_idx];
-			u32 iova2 = iova + (l2_idx << ISP_L2PT_SHIFT);
-
-			if (l2_pt[l2_idx] == mmu_info->dummy_page_pteval)
-				continue;
-
-			dev_dbg(mmu_info->dev,
-				"\tl2 entry %u; iova 0x%8.8x, phys %pa\n",
-				l2_idx, iova2,
-				TBL_PHYS_ADDR(l2_pt[l2_idx]));
-		}
-	}
-
-	dev_dbg(mmu_info->dev, "end IOMMU page table dump\n");
-}
-#endif /* DEBUG */
-
 static dma_addr_t map_single(struct ipu7_mmu_info *mmu_info, void *ptr)
 {
 	dma_addr_t dma;
@@ -626,12 +590,14 @@ static struct ipu7_mmu_info *ipu7_mmu_alloc(struct ipu7_device *isp)
 	if (!mmu_info)
 		return NULL;
 
-	mmu_info->aperture_start = IPU_FW_CODE_REGION_START;
-	if (isp->secure_mode)
+	if (isp->secure_mode) {
+		mmu_info->aperture_start = IPU_FW_CODE_REGION_END;
 		mmu_info->aperture_end = DMA_BIT_MASK(IPU_MMU_ADDR_BITS);
-	else
+	} else {
+		mmu_info->aperture_start = IPU_FW_CODE_REGION_START;
 		mmu_info->aperture_end =
 			DMA_BIT_MASK(IPU_MMU_ADDR_BITS_NON_SECURE);
+	}
 
 	mmu_info->pgsize_bitmap = SZ_4K;
 	mmu_info->dev = &isp->pdev->dev;

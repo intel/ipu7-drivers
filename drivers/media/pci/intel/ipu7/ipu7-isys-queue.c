@@ -11,7 +11,6 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
-#include <linux/version.h>
 
 #include <media/media-entity.h>
 #include <media/v4l2-subdev.h>
@@ -67,7 +66,6 @@ static int ipu7_isys_buf_prepare(struct vb2_buffer *vb)
 	dev_dbg(dev, "buffer: %s: bytesperline %u, height %u\n",
 		av->vdev.name, bytesperline, height);
 	vb2_set_plane_payload(vb, 0, bytesperline * height);
-	vb->planes[0].data_offset = 0;
 
 	return 0;
 }
@@ -234,22 +232,16 @@ ipu7_isys_buffer_to_fw_frame_buff(struct ipu7_insys_buffset *set,
 	u32 buf_id;
 
 	WARN_ON(!bl->nbufs);
-	/* none-skip case */
-	set->skip_frame = 0;
-	set->capture_msg_map = 0;
 
-	/* ignore the flag, always enable the ack */
-	set->capture_msg_map |=
-		IPU_INSYS_FRAME_ENABLE_MSG_SEND_RESP;
-	set->capture_msg_map |=
+	set->skip_frame = 0;
+	set->capture_msg_map = IPU_INSYS_FRAME_ENABLE_MSG_SEND_RESP |
 		IPU_INSYS_FRAME_ENABLE_MSG_SEND_IRQ;
+
+	buf_id = atomic_fetch_inc(&stream->buf_id);
+	set->frame_id = buf_id % IPU_MAX_FRAME_COUNTER;
 
 	list_for_each_entry(ib, &bl->head, head) {
 		struct vb2_buffer *vb = ipu7_isys_buffer_to_vb2_buffer(ib);
-
-		buf_id = atomic_fetch_inc(&stream->buf_id);
-		set->frame_id = buf_id % IPU_MAX_FRAME_COUNTER;
-
 		ipu7_isys_buf_to_fw_frame_buf_pin(vb, set);
 	}
 }
@@ -411,45 +403,40 @@ out:
 static int ipu7_isys_link_fmt_validate(struct ipu7_isys_queue *aq)
 {
 	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
-	struct v4l2_subdev_format fmt = { 0 };
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 0, 0)
-	struct media_pad *pad = media_entity_remote_pad(av->vdev.entity.pads);
-#else
-	struct media_pad *pad =
-		media_pad_remote_pad_first(av->vdev.entity.pads);
-#endif
 	struct device *dev = &av->isys->adev->auxdev.dev;
+	struct media_pad *remote_pad =
+		media_pad_remote_pad_first(av->vdev.entity.pads);
+	struct v4l2_mbus_framefmt format;
 	struct v4l2_subdev *sd;
-	u32 code;
+	u32 r_stream, code;
 	int ret;
 
-	if (!pad) {
-		dev_dbg(dev, "video node %s pad not connected\n",
-			av->vdev.name);
+	if (!remote_pad)
 		return -ENOTCONN;
+
+	sd = media_entity_to_v4l2_subdev(remote_pad->entity);
+	r_stream = ipu7_isys_get_src_stream_by_src_pad(sd, remote_pad->index);
+
+	ret = ipu7_isys_get_stream_pad_fmt(sd, remote_pad->index, r_stream,
+					   &format);
+	if (ret) {
+		dev_dbg(dev, "failed to get %s: pad %d, stream:%d format\n",
+			sd->entity.name, remote_pad->index, r_stream);
+		return ret;
 	}
 
-	sd = media_entity_to_v4l2_subdev(pad->entity);
-
-	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	fmt.pad = pad->index;
-	ret = v4l2_subdev_call(sd, pad, get_fmt, NULL, &fmt);
-	if (ret)
-		return ret;
-
-	if (fmt.format.width != av->pix_fmt.width ||
-	    fmt.format.height != av->pix_fmt.height) {
+	if (format.width != av->pix_fmt.width ||
+	    format.height != av->pix_fmt.height) {
 		dev_dbg(dev, "wrong width or height %ux%u (%ux%u expected)\n",
-			av->pix_fmt.width, av->pix_fmt.height,
-			fmt.format.width, fmt.format.height);
+			av->pix_fmt.width, av->pix_fmt.height, format.width,
+			format.height);
 		return -EINVAL;
 	}
 
 	code = ipu7_isys_get_isys_format(av->pix_fmt.pixelformat)->code;
-	if (fmt.format.code != code) {
-		dev_dbg(dev,
-			"wrong media bus code 0x%8.8x (0x%8.8x expected)\n",
-			code, fmt.format.code);
+	if (format.code != code) {
+		dev_dbg(dev, "wrong mbus code 0x%8.8x (0x%8.8x expected)\n",
+			code, format.code);
 		return -EINVAL;
 	}
 
@@ -506,69 +493,68 @@ static void return_buffers(struct ipu7_isys_queue *aq,
 	}
 }
 
+static void ipu7_isys_stream_cleanup(struct ipu7_isys_video *av)
+{
+	video_device_pipeline_stop(&av->vdev);
+	ipu7_isys_put_stream(av->stream);
+	av->stream = NULL;
+}
+
 static int start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct ipu7_isys_queue *aq = vb2_queue_to_isys_queue(q);
 	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
 	struct device *dev = &av->isys->adev->auxdev.dev;
-	struct ipu7_isys_stream *stream;
-	struct ipu7_isys_buffer_list __bl, *bl = NULL;
 	const struct ipu7_isys_pixelformat *pfmt =
 		ipu7_isys_get_isys_format(av->pix_fmt.pixelformat);
-	bool first = false;
-	int ret;
+	struct ipu7_isys_buffer_list __bl, *bl = NULL;
+	struct ipu7_isys_stream *stream;
+	struct media_entity *source_entity = NULL;
+	int nr_queues, ret;
 
 	dev_dbg(dev, "stream: %s: width %u, height %u, css pixelformat %u\n",
 		av->vdev.name, av->pix_fmt.width, av->pix_fmt.height,
 		pfmt->css_pixelformat);
 
-	/* every ipu7_isys_stream is only enabled once */
-	av->stream = ipu7_isys_get_stream(av->isys);
-	if (!av->stream) {
-		dev_err(dev, "no available stream for firmware\n");
-		ret = -EBUSY;
+	ret = ipu7_isys_setup_video(av, &source_entity, &nr_queues);
+	if (ret < 0) {
+		dev_dbg(dev, "failed to setup video\n");
 		goto out_return_buffers;
+	}
+
+	ret = ipu7_isys_link_fmt_validate(aq);
+	if (ret) {
+		dev_dbg(dev,
+			"%s: link format validation failed (%d)\n",
+			av->vdev.name, ret);
+		goto out_pipeline_stop;
 	}
 
 	stream = av->stream;
 	mutex_lock(&stream->mutex);
 	if (!stream->nr_streaming) {
-		first = true;
-		ret = ipu7_isys_video_prepare_streaming(av);
+		ret = ipu7_isys_video_prepare_stream(av, source_entity,
+						     nr_queues);
 		if (ret) {
 			mutex_unlock(&stream->mutex);
-			goto out_isys_put_stream;
+			goto out_pipeline_stop;
 		}
 	}
-	mutex_unlock(&stream->mutex);
 
-	ret = ipu7_isys_link_fmt_validate(aq);
-	if (ret) {
-		dev_dbg(dev, "%s: link format validation failed (%d)\n",
-			av->vdev.name, ret);
-		goto out_unprepare_streaming;
-	}
-
-	mutex_lock(&stream->mutex);
-	/* TODO: move it from link_validate() temporarily */
-	stream->nr_queues++;
 	stream->nr_streaming++;
 	dev_dbg(dev, "queue %u of %u\n", stream->nr_streaming,
 		stream->nr_queues);
+
 	list_add(&aq->node, &stream->queues);
+
 	if (stream->nr_streaming != stream->nr_queues)
 		goto out;
 
-	if (list_empty(&av->isys->requests)) {
-		bl = &__bl;
-		ret = buffer_list_get(stream, bl);
-		if (ret == -EINVAL) {
-			goto out_stream_start;
-		} else if (ret < 0) {
-			dev_dbg(dev,
-				"no request available, postponing streamon\n");
-			goto out;
-		}
+	bl = &__bl;
+	ret = buffer_list_get(stream, bl);
+	if (ret < 0) {
+		dev_warn(dev, "no buffer available, DRIVER BUG?\n");
+		goto out;
 	}
 
 	ret = ipu7_isys_fw_open(av->isys);
@@ -592,17 +578,8 @@ out_stream_start:
 	stream->nr_streaming--;
 	mutex_unlock(&stream->mutex);
 
-out_unprepare_streaming:
-	if (first)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
-		media_pipeline_stop(&av->vdev.entity);
-#else
-		media_pipeline_stop(av->vdev.entity.pads);
-#endif
-
-out_isys_put_stream:
-	ipu7_isys_put_stream(av->stream);
-	av->stream = NULL;
+out_pipeline_stop:
+	ipu7_isys_stream_cleanup(av);
 
 out_return_buffers:
 	return_buffers(aq, VB2_BUF_STATE_QUEUED);
@@ -622,19 +599,13 @@ static void stop_streaming(struct vb2_queue *q)
 		ipu7_isys_video_set_streaming(av, 0, NULL);
 	mutex_unlock(&av->isys->stream_mutex);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
-	media_pipeline_stop(&av->vdev.entity);
-#else
-	media_pipeline_stop(av->vdev.entity.pads);
-#endif
-	av->stream = NULL;
-
 	stream->nr_streaming--;
 	list_del(&aq->node);
 	stream->streaming = 0;
 
 	mutex_unlock(&stream->mutex);
-	ipu7_isys_put_stream(stream);
+
+	ipu7_isys_stream_cleanup(av);
 
 	return_buffers(aq, VB2_BUF_STATE_ERROR);
 
@@ -709,7 +680,7 @@ void ipu7_isys_buf_calc_sequence_time(struct ipu7_isys_buffer *ib,
 
 	dev_dbg(dev, "buf: %s: buffer done, CPU-timestamp:%lld, sequence:%d\n",
 		av->vdev.name, ktime_get_ns(), sequence);
-	dev_dbg(dev, "index:%d, vbuf timestamp:%lld, endl\n", vb->index,
+	dev_dbg(dev, "index:%d, vbuf timestamp:%lld\n", vb->index,
 		vbuf->vb2_buf.timestamp);
 }
 
@@ -811,11 +782,7 @@ int ipu7_isys_queue_init(struct ipu7_isys_queue *aq)
 	aq->vbq.lock = &av->mutex;
 	aq->vbq.mem_ops = &vb2_dma_contig_memops;
 	aq->vbq.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 	aq->vbq.min_queued_buffers = 1;
-#else
-	aq->vbq.min_buffers_needed = 1;
-#endif
 	aq->vbq.timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 
 	ret = vb2_queue_init(&aq->vbq);

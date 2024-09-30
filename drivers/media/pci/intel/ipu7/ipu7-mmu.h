@@ -264,7 +264,6 @@ struct ipu7_mmu_info {
 
 	spinlock_t lock;	/* Serialize access to users */
 	struct ipu7_dma_mapping *dmap;
-	bool fw_code_region_mapped;
 };
 
 struct ipu7_mmu {

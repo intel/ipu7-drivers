@@ -122,8 +122,38 @@ static void ipu7_isys_tpg_init_controls(struct v4l2_subdev *sd)
 	v4l2_ctrl_new_custom(&tpg->asd.ctrl_handler, &tpg_mode, NULL);
 }
 
+static int tpg_sd_init_cfg(struct v4l2_subdev *sd,
+			   struct v4l2_subdev_state *state)
+{
+	struct v4l2_subdev_route routes[] = {
+		{
+		.source_pad = 0,
+		.source_stream = 0,
+		.flags = V4L2_SUBDEV_ROUTE_FL_ACTIVE,
+		}
+	};
+
+	struct v4l2_subdev_krouting routing = {
+		.num_routes = 1,
+		.routes = routes,
+	};
+
+	static const struct v4l2_mbus_framefmt format = {
+		.width = 1920,
+		.height = 1080,
+		.code = MEDIA_BUS_FMT_SBGGR10_1X10,
+		.field = V4L2_FIELD_NONE,
+	};
+
+	return v4l2_subdev_set_routing_with_fmt(sd, state, &routing, &format);
+}
+
+static const struct v4l2_subdev_internal_ops ipu7_isys_tpg_internal_ops = {
+	.init_state = tpg_sd_init_cfg,
+};
+
 static const struct v4l2_subdev_pad_ops tpg_sd_pad_ops = {
-	.get_fmt = ipu7_isys_subdev_get_fmt,
+	.get_fmt = v4l2_subdev_get_fmt,
 	.set_fmt = ipu7_isys_subdev_set_fmt,
 	.enum_mbus_code = ipu7_isys_subdev_enum_mbus_code,
 };
@@ -278,19 +308,13 @@ static int tpg_stop_stream(const struct ipu7_isys_tpg *tpg)
 	return 0;
 }
 
-static u8 mapped_lane_config[] = {
-	MGC_MAPPED_4_LANES,
-	MGC_MAPPED_2_LANES,
-	MGC_MAPPED_2_LANES,
-	MGC_MAPPED_4_LANES,
-};
-
 #define IS_IO_CLK	(IPU7_IS_FREQ_CTL_DEFAULT_RATIO * 100 / 6)
 #define TPG_FRAME_RATE	30
 #define TPG_BLANK_RATIO	(4 / 3)
 static void tpg_get_timing(const struct ipu7_isys_tpg *tpg, u32 *dto,
 			   u32 *hblank_cycles, u32 *vblank_cycles)
 {
+	struct v4l2_mbus_framefmt format;
 	u32 width, height;
 	u32 code;
 	u32 bpp;
@@ -300,19 +324,22 @@ static void tpg_get_timing(const struct ipu7_isys_tpg *tpg, u32 *dto,
 	u32 ref_clk;
 	struct device *dev = &tpg->isys->adev->auxdev.dev;
 	u32 dto_incr_val = 0x100;
-	u8 mgif_width = 64;
+	int ret;
 
-	width = tpg->asd.ffmt[TPG_PAD_SOURCE].width;
-	height = tpg->asd.ffmt[TPG_PAD_SOURCE].height;
-	code = tpg->asd.ffmt[TPG_PAD_SOURCE].code;
+	ret = ipu7_isys_get_stream_pad_fmt((struct v4l2_subdev *)&tpg->asd.sd,
+					   0, 0, &format);
+	if (ret)
+		return;
+
+	width = format.width;
+	height = format.height;
+	code = format.code;
+
 	bpp = ipu7_isys_mbus_code_to_bpp(code);
 	dev_dbg(dev, "MG%d code = 0x%x bpp = %u\n", tpg->index, code, bpp);
 	bits_per_line = width * bpp * TPG_BLANK_RATIO;
-	/* MGIF width 32bits or 64bits */
-	if (mapped_lane_config[tpg->index] == MGC_MAPPED_2_LANES)
-		mgif_width = 64;
 
-	cycles = div_u64(bits_per_line, mgif_width);
+	cycles = div_u64(bits_per_line, 64);
 	dev_dbg(dev, "MG%d bits_per_line = %u cycles = %llu\n", tpg->index,
 		bits_per_line, cycles);
 
@@ -349,7 +376,7 @@ static void tpg_get_timing(const struct ipu7_isys_tpg *tpg, u32 *dto,
 	dev_dbg(dev, "hblank_us = %llu, vblank_us = %llu dto_incr_val = %u\n",
 		hblank_us, vblank_us, dto_incr_val);
 
-	ref_clk = ipu7_buttress_get_ref_clk(tpg->isys->adev->isp);
+	ref_clk = tpg->isys->adev->isp->buttress.ref_clk;
 
 	*dto = dto_incr_val;
 	*hblank_cycles = hblank_us * ref_clk / 10;
@@ -360,6 +387,7 @@ static void tpg_get_timing(const struct ipu7_isys_tpg *tpg, u32 *dto,
 
 static int tpg_start_stream(const struct ipu7_isys_tpg *tpg)
 {
+	struct v4l2_mbus_framefmt format;
 	u32 port_map;
 	u32 csi_port;
 	u32 code, bpp;
@@ -368,16 +396,22 @@ static int tpg_start_stream(const struct ipu7_isys_tpg *tpg)
 	struct device *dev = &tpg->isys->adev->auxdev.dev;
 	void __iomem *mgc_base = tpg->isys->pdata->base + IS_IO_MGC_BASE;
 	void __iomem *mg_base = tpg->base;
+	int ret;
 
-	width = tpg->asd.ffmt[TPG_PAD_SOURCE].width;
-	height = tpg->asd.ffmt[TPG_PAD_SOURCE].height;
-	code = tpg->asd.ffmt[TPG_PAD_SOURCE].code;
+	ret = ipu7_isys_get_stream_pad_fmt((struct v4l2_subdev *)&tpg->asd.sd,
+					   0, 0, &format);
+	if (ret)
+		return ret;
+
+	width = format.width;
+	height = format.height;
+	code = format.code;
 	dev_dbg(dev, "MG%d code: 0x%x resolution: %ux%u\n",
 		tpg->index, code, width, height);
 	bpp = ipu7_isys_mbus_code_to_bpp(code);
 
 	csi_port = tpg->index;
-	if (csi_port >= ARRAY_SIZE(mapped_lane_config))
+	if (csi_port >= 4)
 		dev_err(dev, "invalid tpg index %u\n", tpg->index);
 
 	dev_dbg(dev, "INSYS MG%d was mapped to CSI%d\n",
@@ -391,8 +425,7 @@ static int tpg_start_stream(const struct ipu7_isys_tpg *tpg)
 	writel(port_map, mgc_base + MGC_CSI_PORT_MAP(csi_port));
 
 	/* configure adapt layer type */
-	writel(mapped_lane_config[csi_port],
-	       mg_base + MGC_MG_CSI_ADAPT_LAYER_TYPE);
+	writel(1, mg_base + MGC_MG_CSI_ADAPT_LAYER_TYPE);
 
 	/* configure MGC mode
 	 * 0 - Disable MGC
@@ -529,8 +562,7 @@ static void ipu7_isys_mgc_csi2_s_stream(struct ipu7_isys_tpg *tpg, int enable)
 int tpg_set_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct ipu7_isys_tpg *tpg = to_ipu7_isys_tpg(sd);
-	struct ipu7_isys_stream *stream =
-		to_ipu7_isys_pipeline(media_entity_pipeline(&sd->entity));
+	struct ipu7_isys_stream *stream = tpg->av->stream;
 	struct device *dev = &tpg->isys->adev->auxdev.dev;
 	int ret;
 
@@ -551,7 +583,6 @@ int tpg_set_stream(struct v4l2_subdev *sd, int enable)
 	}
 
 	stream->asd = &tpg->asd;
-	stream->asd->is_tpg = true;
 	/* ungate the MGC clock to program */
 	ipu7_isys_ungate_mgc(tpg, enable);
 	/* Start MGC */
@@ -589,24 +620,24 @@ int ipu7_isys_tpg_init(struct ipu7_isys_tpg *tpg, struct ipu7_isys *isys,
 	if (ret)
 		return ret;
 
+	tpg->asd.sd.flags &= ~V4L2_SUBDEV_FL_STREAMS;
 	tpg->asd.sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
 	tpg->asd.pad[TPG_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 
 	tpg->asd.source = IPU_INSYS_MIPI_PORT_0 + index;
 	tpg->asd.supported_codes = tpg_supported_codes;
+	tpg->asd.sd.internal_ops = &ipu7_isys_tpg_internal_ops;
 
 	snprintf(tpg->asd.sd.name, sizeof(tpg->asd.sd.name),
 		 IPU_ISYS_ENTITY_PREFIX " TPG %u", index);
 	v4l2_set_subdevdata(&tpg->asd.sd, &tpg->asd);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
 	ret = v4l2_subdev_init_finalize(&tpg->asd.sd);
 	if (ret) {
 		dev_err(dev, "failed to finalize subdev (%d)\n", ret);
 		goto fail;
 	}
 
-#endif
 	ret = v4l2_device_register_subdev(&isys->v4l2_dev, &tpg->asd.sd);
 	if (ret) {
 		dev_info(dev, "can't register v4l2 subdev\n");

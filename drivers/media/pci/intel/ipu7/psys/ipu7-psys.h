@@ -160,7 +160,6 @@ struct ipu7_dma_buf_attach {
 	u64 len;
 	void *userptr;
 	struct sg_table *sgt;
-	bool vma_is_io;
 	struct page **pages;
 	size_t npages;
 };
