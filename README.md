@@ -26,7 +26,7 @@ Three ways are available:
 3. Build and install by dkms (DKMS build)
 
 ### 1. In-tree build
-- Tested with kernel v6.8 ~ v6.11-rc2
+- Tested with kernel v6.8 and v6.10
 1. Check out kernel source code
 2. Patch kernel source code, using patches under `patch/<kernel-version>` and `patch/<kernel-version>/in-tree-build` depending on what you need.
 3. Copy `drivers` and `include` folders to kernel source code.
