@@ -23,6 +23,7 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/version.h>
 #include <linux/vmalloc.h>
 #include <media/ipu-bridge.h>
 
@@ -1795,9 +1796,13 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (ret)
 		return dev_err_probe(dev, ret, "Failed to set DMA mask\n");
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
 	ret = dma_set_max_seg_size(dev, UINT_MAX);
 	if (ret)
 		return dev_err_probe(dev, ret, "Failed to set max_seg_size\n");
+#else
+	dma_set_max_seg_size(dev, UINT_MAX);
+#endif
 
 	ret = ipu7_pci_config_setup(pdev);
 	if (ret)
