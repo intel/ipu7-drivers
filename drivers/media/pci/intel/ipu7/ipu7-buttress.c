@@ -349,8 +349,9 @@ irqreturn_t ipu7_buttress_isr(int irq, void *isp_ptr)
 	pb_irq = readl(isp->pb_base + INTERRUPT_STATUS);
 	writel(pb_irq, isp->pb_base + INTERRUPT_STATUS);
 
+	/* check btrs ATS, CFI and IMR errors, BIT(0) is unused for IPU */
 	pb_local_irq = readl(isp->pb_base + BTRS_LOCAL_INTERRUPT_MASK);
-	if (pb_local_irq) {
+	if (pb_local_irq & ~BIT(0)) {
 		dev_warn(dev, "PB interrupt status 0x%x local 0x%x\n", pb_irq,
 			 pb_local_irq);
 		dev_warn(dev, "Details: %x %x %x %x %x %x %x %x\n",
@@ -363,6 +364,7 @@ irqreturn_t ipu7_buttress_isr(int irq, void *isp_ptr)
 			 readl(isp->pb_base + IMR_ERROR_LOGGING_CFI_1_LOW),
 			 readl(isp->pb_base + IMR_ERROR_LOGGING_CFI_1_HIGH));
 	}
+
 	irq_status = readl(isp->base + BUTTRESS_REG_IRQ_STATUS);
 	if (!irq_status) {
 		pm_runtime_put_noidle(dev);
