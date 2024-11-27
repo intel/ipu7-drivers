@@ -1121,10 +1121,11 @@ static int psys_runtime_pm_suspend(struct device *dev)
 	if (!psys)
 		return 0;
 
-	if (!psys->ready)
-		return 0;
-
 	spin_lock_irqsave(&psys->ready_lock, flags);
+	if (!psys->ready) {
+		spin_unlock_irqrestore(&psys->ready_lock, flags);
+		return 0;
+	}
 	psys->ready = 0;
 	spin_unlock_irqrestore(&psys->ready_lock, flags);
 
@@ -1150,7 +1151,16 @@ static int psys_resume(struct device *dev)
 
 static int psys_suspend(struct device *dev)
 {
-	return 0;
+	struct ipu7_psys *psys = dev_get_drvdata(dev);
+	unsigned long flags;
+	int ret = 0;
+
+	spin_lock_irqsave(&psys->ready_lock, flags);
+	if (psys->ready)
+		ret = -EBUSY;
+	spin_unlock_irqrestore(&psys->ready_lock, flags);
+
+	return ret;
 }
 
 static const struct dev_pm_ops psys_pm_ops = {
