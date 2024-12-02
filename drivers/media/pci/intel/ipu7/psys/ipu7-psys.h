@@ -30,9 +30,6 @@
  */
 #define MAX_TASK_REQUEST_QUEUE_SIZE		8
 
-// TODO: use FW configuration to replace it
-#define IPU_PSYS_NUM_STREAMS			8
-
 #define INVALID_STREAM_ID			0xFF
 /**
  * Task request queues per stream
