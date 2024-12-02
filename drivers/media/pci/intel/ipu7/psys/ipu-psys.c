@@ -507,7 +507,7 @@ static int ipu7_psys_release(struct inode *inode, struct file *file)
 	mutex_destroy(&fh->mutex);
 	kfree(fh);
 
-	pm_runtime_put(&psys->adev->auxdev.dev);
+	pm_runtime_put_sync(&psys->adev->auxdev.dev);
 
 	return 0;
 }
