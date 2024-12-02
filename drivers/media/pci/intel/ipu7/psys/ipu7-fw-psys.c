@@ -275,11 +275,10 @@ static bool ipu7_fw_psys_build_node_term(const struct node_ternimal *term,
 	struct ipu7_msg_term *msg_term = (struct ipu7_msg_term *)*buf_ptr_ptr;
 	u16 buf_size = sizeof(*msg_term);
 
-	memset(msg_term, 0, sizeof(*msg_term));
-	/* TODO: check on TEB on the skipped terminals */
 	if (!term->term_id && !term->buf_size)
 		return false;
 
+	memset(msg_term, 0, sizeof(*msg_term));
 	msg_term->term_id = term->term_id;
 	/* Disable progress message on connect terminals */
 	msg_term->event_req_bm = 0U;
@@ -340,7 +339,7 @@ static bool ipu7_fw_psys_build_node(const struct graph_node *node,
 	msg_node->terms_list.head_offset =
 		(u16)((uintptr_t)*buf_ptr_ptr -
 		      (uintptr_t)&msg_node->terms_list);
-	for (i = 0; i < ARRAY_SIZE(node->terminals); i++) {
+	for (i = 0; i < ARRAY_SIZE(node->terminals) && i < node->num_terms; i++) {
 		ret = ipu7_fw_psys_build_node_term(&node->terminals[i],
 						   buf_ptr_ptr);
 		if (ret)
