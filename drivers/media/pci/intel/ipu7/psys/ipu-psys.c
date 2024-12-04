@@ -507,7 +507,7 @@ static int ipu7_psys_release(struct inode *inode, struct file *file)
 	mutex_destroy(&fh->mutex);
 	kfree(fh);
 
-	pm_runtime_put(&psys->adev->auxdev.dev);
+	pm_runtime_put_sync(&psys->adev->auxdev.dev);
 
 	return 0;
 }
@@ -1121,10 +1121,11 @@ static int psys_runtime_pm_suspend(struct device *dev)
 	if (!psys)
 		return 0;
 
-	if (!psys->ready)
-		return 0;
-
 	spin_lock_irqsave(&psys->ready_lock, flags);
+	if (!psys->ready) {
+		spin_unlock_irqrestore(&psys->ready_lock, flags);
+		return 0;
+	}
 	psys->ready = 0;
 	spin_unlock_irqrestore(&psys->ready_lock, flags);
 
@@ -1150,7 +1151,16 @@ static int psys_resume(struct device *dev)
 
 static int psys_suspend(struct device *dev)
 {
-	return 0;
+	struct ipu7_psys *psys = dev_get_drvdata(dev);
+	unsigned long flags;
+	int ret = 0;
+
+	spin_lock_irqsave(&psys->ready_lock, flags);
+	if (psys->ready)
+		ret = -EBUSY;
+	spin_unlock_irqrestore(&psys->ready_lock, flags);
+
+	return ret;
 }
 
 static const struct dev_pm_ops psys_pm_ops = {
@@ -1525,7 +1535,6 @@ static irqreturn_t psys_isr_threaded(struct ipu7_bus_device *adev)
 
 	state = ipu7_boot_get_boot_state(adev);
 	if (IA_GOFO_FW_BOOT_STATE_IS_CRITICAL(state)) {
-		//TODO: Add log parser
 		dev_warn(&psys->dev, "error state %u\n", state);
 	} else {
 		status = readl(base + IPU_REG_PSYS_TO_SW_IRQ_CNTL_STATUS);

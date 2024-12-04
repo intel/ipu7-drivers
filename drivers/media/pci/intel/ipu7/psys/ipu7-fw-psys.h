@@ -13,8 +13,8 @@
 
 #include <uapi/linux/ipu7-psys.h>
 
-// TODO: use FW configuration replace it
-#define IPU_PSYS_MAX_GRAPH_NUMS		(8U)
+#define IPU_PSYS_MAX_GRAPH_NUMS	(8U)
+#define IPU_PSYS_NUM_STREAMS IPU_PSYS_MAX_GRAPH_NUMS
 
 struct ipu7_msg_to_str {
 	const enum ipu7_msg_type type;
