@@ -44,12 +44,9 @@ typedef u32 ipu7_msg_teb_t[2];
 typedef u32 ipu7_msg_deb_t[DEB_NUM_UINT32];
 
 #define IPU_MSG_NODE_MAX_ROUTE_ENABLES	(128U)
-#define RBM_NUM_UINT32 \
-	(IPU_MSG_NODE_MAX_ROUTE_ENABLES / (sizeof(u32) * 8U))
+#define RBM_NUM_UINT32	(IPU_MSG_NODE_MAX_ROUTE_ENABLES / (sizeof(u32) * 8U))
 
 typedef u32 ipu7_msg_rbm_t[RBM_NUM_UINT32];
-
-typedef ipu7_msg_rbm_t ipu7_msg_reb_t;
 
 enum ipu7_msg_node_profile_type {
 	IPU_MSG_NODE_PROFILE_TYPE_PAD = 0,
@@ -67,7 +64,7 @@ struct ipu7_msg_cb_profile {
 	struct ipu7_msg_node_profile profile_base;
 	ipu7_msg_deb_t deb;
 	ipu7_msg_rbm_t rbm;
-	ipu7_msg_reb_t reb;
+	ipu7_msg_rbm_t reb;
 };
 
 #define IPU_MSG_NODE_MAX_PROFILES	(2U)
@@ -93,6 +90,7 @@ enum ipu7_msg_node_option_types {
 	IPU_MSG_NODE_OPTION_TYPES_PADDING = 0,
 	IPU_MSG_NODE_OPTION_TYPES_N
 };
+
 #pragma pack(pop)
 
 static inline void ipu7_msg_node_test_func(void)
@@ -152,7 +150,7 @@ struct ipu7_msg_link_cmprs_option {
 	u32 cmprs_buf_size;
 	u16 align_interval;
 	u8 reserved[2];
-	struct ipu7_msg_link_cmprs_plane_desc plane_descs[IPU_MSG_LINK_CMPRS_MAX_PLANES];
+	struct ipu7_msg_link_cmprs_plane_desc plane_descs[2];
 };
 
 struct ipu7_msg_link_ep {
@@ -165,10 +163,10 @@ struct ipu7_msg_link_ep_pair {
 	struct ipu7_msg_link_ep ep_dst;
 };
 
-#define IPU_MSG_LINK_FOREIGN_KEY_NONE		UINT16_MAX
+#define IPU_MSG_LINK_FOREIGN_KEY_NONE		(65535U)
 #define IPU_MSG_LINK_FOREIGN_KEY_MAX		(64U)
-#define IPU_MSG_LINK_PBK_ID_DONT_CARE		UINT8_MAX
-#define IPU_MSG_LINK_PBK_SLOT_ID_DONT_CARE	UINT8_MAX
+#define IPU_MSG_LINK_PBK_ID_DONT_CARE		(255U)
+#define IPU_MSG_LINK_PBK_SLOT_ID_DONT_CARE	(255U)
 #define IPU_MSG_LINK_TERM_ID_DONT_CARE		(0xffU)
 
 struct ipu7_msg_link {
@@ -182,6 +180,7 @@ struct ipu7_msg_link {
 	u8 reserved[2];
 	struct ia_gofo_tlv_list link_options;
 };
+
 #pragma pack(pop)
 
 static inline void ipu7_msg_abi_link_test_func(void)
@@ -262,6 +261,7 @@ enum ipu7_msg_err_task {
 	IPU_MSG_ERR_TASK_EXEC_UNKNOWN = 11,
 	IPU_MSG_ERR_TASK_N
 };
+
 #pragma pack(pop)
 
 static inline void ipu7_msg_task_test_func(void)
@@ -308,6 +308,7 @@ struct ipu7_msg_term_event {
 	u8 reserved[1];
 	u64 event_ts;
 };
+
 #pragma pack(pop)
 
 static inline void ipu7_msg_term_test_func(void)
@@ -354,6 +355,7 @@ enum ipu7_msg_err_device {
 	IPU_MSG_ERR_DEVICE_MSG_MAP = 2,
 	IPU_MSG_ERR_DEVICE_N
 };
+
 #pragma pack(pop)
 
 static inline void ipu7_msg_device_test_func(void)
@@ -459,6 +461,7 @@ enum ipu7_msg_err_graph {
 	IPU_MSG_ERR_GRAPH_CTX_DELAYED_LINK = 38,
 	IPU_MSG_ERR_GRAPH_N
 };
+
 #pragma pack(pop)
 
 static inline void ipu7_msg_graph_test_func(void)
@@ -499,13 +502,6 @@ useful queues"
 #define FWPS_MSG_ABI_OUT_LAST_QUEUE_ID	(FWPS_MSG_ABI_MAX_OUTPUT_QUEUES - 1U)
 #define FWPS_MSG_ABI_IN_FIRST_QUEUE_ID		(FWPS_MSG_ABI_IN_DEV_QUEUE_ID)
 #define FWPS_MSG_ABI_IN_LAST_QUEUE_ID	(FWPS_MSG_ABI_IN_LAST_TASK_QUEUE_ID)
-
-#define FWPS_MSG_ABI_IS_OUTPUT_QUEUE(queue_id) (\
-	(queue_id >= FWPS_MSG_ABI_OUT_FIRST_QUEUE_ID) && \
-	(queue_id <= FWPS_MSG_ABI_OUT_LAST_QUEUE_ID))
-
-#define FWPS_MSG_ABI_IS_INPUT_QUEUE(queue_id) \
-	(!FWPS_MSG_ABI_IS_OUTPUT_QUEUE(queue_id))
 
 #define FWPS_MSG_HOST2FW_MAX_SIZE	(2U * 1024U)
 #define FWPS_MSG_FW2HOST_MAX_SIZE	(256U)

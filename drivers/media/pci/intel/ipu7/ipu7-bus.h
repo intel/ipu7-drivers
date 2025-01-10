@@ -19,7 +19,7 @@
 #include "ipu7-syscom.h"
 
 struct pci_dev;
-struct ipu7_buttress_ctrl;
+struct ipu_buttress_ctrl;
 struct ipu7_mmu;
 struct ipu7_device;
 
@@ -38,7 +38,7 @@ struct ipu7_bus_device {
 	void *pdata;
 	struct ipu7_mmu *mmu;
 	struct ipu7_device *isp;
-	struct ipu7_buttress_ctrl *ctrl;
+	const struct ipu_buttress_ctrl *ctrl;
 	u64 dma_mask;
 	struct sg_table fw_sgt;
 	u32 fw_entry;
@@ -62,7 +62,7 @@ struct ipu7_auxdrv_data {
 
 struct ipu7_bus_device *
 ipu7_bus_initialize_device(struct pci_dev *pdev, struct device *parent,
-			   void *pdata, struct ipu7_buttress_ctrl *ctrl,
+			   void *pdata, const struct ipu_buttress_ctrl *ctrl,
 			   char *name);
 int ipu7_bus_add_device(struct ipu7_bus_device *adev);
 void ipu7_bus_del_devices(struct pci_dev *pdev);

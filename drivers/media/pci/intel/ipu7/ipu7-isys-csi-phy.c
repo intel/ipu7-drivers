@@ -137,60 +137,59 @@ static void dwc_phy_write(struct ipu7_isys *isys, u32 id, u32 addr, u16 data)
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CDPHY_BASE(id);
 
-	dev_dbg(&isys->adev->auxdev.dev, "phy write: reg 0x%lx = data 0x%04x",
+	dev_dbg(&isys->adev->auxdev.dev, "phy write: reg 0x%zx = data 0x%04x",
 		base + addr - isys_base, data);
 	writew(data, base + addr);
 }
 
 static u16 dwc_phy_read(struct ipu7_isys *isys, u32 id, u32 addr)
 {
-	u16 data;
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CDPHY_BASE(id);
+	u16 data;
 
 	data = readw(base + addr);
-	dev_dbg(&isys->adev->auxdev.dev, "phy read: reg 0x%lx = data 0x%04x",
+	dev_dbg(&isys->adev->auxdev.dev, "phy read: reg 0x%zx = data 0x%04x",
 		base + addr - isys_base, data);
 
 	return data;
 }
 
-static void dwc_csi_write(struct ipu7_isys *isys, u32 id, u32 addr,
-			  u32 data)
+static void dwc_csi_write(struct ipu7_isys *isys, u32 id, u32 addr, u32 data)
 {
-	struct device *dev = &isys->adev->auxdev.dev;
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CSI2_HOST_BASE(id);
+	struct device *dev = &isys->adev->auxdev.dev;
 
-	dev_dbg(dev, "csi write: reg 0x%lx = data 0x%08x",
+	dev_dbg(dev, "csi write: reg 0x%zx = data 0x%08x",
 		base + addr - isys_base, data);
 	writel(data, base + addr);
-	dev_dbg(dev, "csi read: reg 0x%lx = data 0x%08x",
+	dev_dbg(dev, "csi read: reg 0x%zx = data 0x%08x",
 		base + addr - isys_base, readl(base + addr));
 }
 
-static void gpreg_write(struct ipu7_isys *isys, u32 id, u32 addr,
-			u32 data)
+static void gpreg_write(struct ipu7_isys *isys, u32 id, u32 addr, u32 data)
 {
-	struct device *dev = &isys->adev->auxdev.dev;
 	void __iomem *isys_base = isys->pdata->base;
-	void __iomem *base = isys_base + IS_IO_CSI2_GPREGS_BASE(id);
+	u32 gpreg = isys->pdata->ipdata->csi2.gpreg;
+	void __iomem *base = isys_base + gpreg + 0x1000 * id;
+	struct device *dev = &isys->adev->auxdev.dev;
 
-	dev_dbg(dev, "gpreg write: reg 0x%lx = data 0x%08x",
+	dev_dbg(dev, "gpreg write: reg 0x%zx = data 0x%08x",
 		base + addr - isys_base, data);
 	writel(data, base + addr);
-	dev_dbg(dev, "gpreg read: reg 0x%lx = data 0x%08x",
+	dev_dbg(dev, "gpreg read: reg 0x%zx = data 0x%08x",
 		base + addr - isys_base, readl(base + addr));
 }
 
 static u32 dwc_csi_read(struct ipu7_isys *isys, u32 id, u32 addr)
 {
-	u32 data;
 	void __iomem *isys_base = isys->pdata->base;
 	void __iomem *base = isys_base + IS_IO_CSI2_HOST_BASE(id);
+	u32 data;
 
 	data = readl(base + addr);
-	dev_dbg(&isys->adev->auxdev.dev, "csi read: reg 0x%lx = data 0x%x",
+	dev_dbg(&isys->adev->auxdev.dev, "csi read: reg 0x%zx = data 0x%x",
 		base + addr - isys_base, data);
 
 	return data;
@@ -269,15 +268,16 @@ static void ipu7_isys_csi_phy_reset(struct ipu7_isys *isys, u32 id)
 #define N_DATA_IDS		8
 static DECLARE_BITMAP(data_ids, N_DATA_IDS);
 /* 8 Data ID monitors, each Data ID is composed by pair of VC and data type */
-int ipu7_isys_csi_ctrl_dids_config(struct ipu7_isys *isys, u32 id, u8 vc, u8 dt)
+static int __dids_config(struct ipu7_isys_csi2 *csi2, u32 id, u8 vc, u8 dt)
 {
+	struct ipu7_isys *isys = csi2->isys;
 	u32 reg, n;
-	int ret;
 	u8 lo, hi;
+	int ret;
 
-	dev_dbg(&isys->adev->auxdev.dev, "Config CSI-%u with vc:%u data-type:0x%x\n",
+	dev_dbg(&isys->adev->auxdev.dev, "config CSI-%u with vc:%u dt:0x%02x\n",
 		id, vc, dt);
-	/* enable VCX: 2-bit field for DPHY, 3-bit for CPHY */
+
 	dwc_csi_write(isys, id, VC_EXTENSION, 0x0);
 	n = find_first_zero_bit(data_ids, N_DATA_IDS);
 	if (n == N_DATA_IDS)
@@ -300,11 +300,56 @@ int ipu7_isys_csi_ctrl_dids_config(struct ipu7_isys *isys, u32 id, u8 vc, u8 dt)
 	return 0;
 }
 
+static int ipu7_isys_csi_ctrl_dids_config(struct ipu7_isys_csi2 *csi2, u32 id)
+{
+	struct v4l2_mbus_frame_desc_entry *desc_entry = NULL;
+	struct device *dev = &csi2->isys->adev->auxdev.dev;
+	struct v4l2_mbus_frame_desc desc;
+	struct v4l2_subdev *ext_sd;
+	struct media_pad *pad;
+	unsigned int i;
+	int ret;
+
+	pad = media_entity_remote_source_pad_unique(&csi2->asd.sd.entity);
+	if (IS_ERR(pad)) {
+		dev_warn(dev, "can't get remote source pad of %s (%ld)\n",
+			 csi2->asd.sd.name, PTR_ERR(pad));
+		return PTR_ERR(pad);
+	}
+
+	ext_sd = media_entity_to_v4l2_subdev(pad->entity);
+	if (WARN(!ext_sd, "Failed to get subdev for entity %s\n",
+		 pad->entity->name))
+		return -ENODEV;
+
+	ret = v4l2_subdev_call(ext_sd, pad, get_frame_desc, pad->index, &desc);
+	if (ret)
+		return ret;
+
+	if (desc.type != V4L2_MBUS_FRAME_DESC_TYPE_CSI2) {
+		dev_warn(dev, "Unsupported frame descriptor type\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < desc.num_entries; i++) {
+		desc_entry = &desc.entry[i];
+		if (desc_entry->bus.csi2.vc < NR_OF_CSI2_VC) {
+			ret = __dids_config(csi2, id, desc_entry->bus.csi2.vc,
+					    desc_entry->bus.csi2.dt);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+}
+
 #define CDPHY_TIMEOUT (5000000)
 static int ipu7_isys_phy_ready(struct ipu7_isys *isys, u32 id)
 {
-	void __iomem *base = isys->pdata->base;
-	void __iomem *gpreg = base + IS_IO_CSI2_GPREGS_BASE(id);
+	void __iomem *isys_base = isys->pdata->base;
+	u32 gpreg_offset = isys->pdata->ipdata->csi2.gpreg;
+	void __iomem *gpreg = isys_base + gpreg_offset + 0x1000 * id;
 	struct device *dev = &isys->adev->auxdev.dev;
 	unsigned int i;
 	u32 phy_ready;
@@ -378,7 +423,6 @@ static int lookup_table1(u16 mbps)
 
 	for (i = 0; i < ARRAY_SIZE(table1); i++) {
 		if (mbps >= table1[i].min_mbps && mbps <= table1[i].max_mbps)
-
 			return i;
 	}
 
@@ -563,7 +607,7 @@ static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 
 	dwc_phy_write_mask(isys, id, CORE_DIG_IOCTRL_RW_AFE_LANE0_CTRL_2_2,
 			   0, 0, 0);
-	if (is_ipu7p5(isys->adev->isp->hw_ver) ||
+	if (!is_ipu7(isys->adev->isp->hw_ver) ||
 	    id == PORT_B || id == PORT_C) {
 		dwc_phy_write_mask(isys, id,
 				   CORE_DIG_IOCTRL_RW_AFE_LANE1_CTRL_2_2,
@@ -580,7 +624,7 @@ static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 				   1, 0, 0);
 	}
 
-	if (lanes == 4 && !is_ipu7p5(isys->adev->isp->hw_ver)) {
+	if (lanes == 4 && is_ipu7(isys->adev->isp->hw_ver)) {
 		dwc_phy_write_mask(isys, id,
 				   CORE_DIG_IOCTRL_RW_AFE_LANE3_CTRL_2_2,
 				   0, 0, 0);
@@ -609,7 +653,7 @@ static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 	index = lookup_table6(mbps);
 	if (index >= 0) {
 		val = table6[index].oa_lane_hsrx_hs_clk_div;
-		if (is_ipu7p5(isys->adev->isp->hw_ver) ||
+		if (!is_ipu7(isys->adev->isp->hw_ver) ||
 		    id == PORT_B || id == PORT_C)
 			reg = CORE_DIG_IOCTRL_RW_AFE_LANE1_CTRL_2_9;
 		else
@@ -731,7 +775,7 @@ static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 			   hsrxval0, 0, 2);
 	dwc_phy_write_mask(isys, id, CORE_DIG_IOCTRL_RW_AFE_LANE2_CTRL_2_9,
 			   hsrxval0, 0, 2);
-	if (lanes == 4 && !is_ipu7p5(isys->adev->isp->hw_ver)) {
+	if (lanes == 4 && is_ipu7(isys->adev->isp->hw_ver)) {
 		dwc_phy_write_mask(isys, id,
 				   CORE_DIG_IOCTRL_RW_AFE_LANE3_CTRL_2_9,
 				   hsrxval0, 0, 2);
@@ -746,7 +790,7 @@ static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 			   hsrxval1, 3, 4);
 	dwc_phy_write_mask(isys, id, CORE_DIG_IOCTRL_RW_AFE_LANE2_CTRL_2_9,
 			   hsrxval1, 3, 4);
-	if (lanes == 4 && !is_ipu7p5(isys->adev->isp->hw_ver)) {
+	if (lanes == 4 && is_ipu7(isys->adev->isp->hw_ver)) {
 		dwc_phy_write_mask(isys, id,
 				   CORE_DIG_IOCTRL_RW_AFE_LANE3_CTRL_2_9,
 				   hsrxval1, 3, 4);
@@ -761,7 +805,7 @@ static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 			   hsrxval2, 0, 2);
 	dwc_phy_write_mask(isys, id, CORE_DIG_IOCTRL_RW_AFE_LANE2_CTRL_2_15,
 			   hsrxval2, 0, 2);
-	if (lanes == 4 && !is_ipu7p5(isys->adev->isp->hw_ver)) {
+	if (lanes == 4 && is_ipu7(isys->adev->isp->hw_ver)) {
 		dwc_phy_write_mask(isys, id,
 				   CORE_DIG_IOCTRL_RW_AFE_LANE3_CTRL_2_15,
 				   hsrxval2, 0, 2);
@@ -788,7 +832,7 @@ int ipu7_isys_csi_phy_powerup(struct ipu7_isys_csi2 *csi2)
 	int ret;
 
 	/* lanes remapping for aggregation (port AB) mode */
-	if (is_ipu7p5(isys->adev->isp->hw_ver) && lanes > 2 && id == PORT_A) {
+	if (!is_ipu7(isys->adev->isp->hw_ver) && lanes > 2 && id == PORT_A) {
 		aggregation = true;
 		lanes = 2;
 	}
@@ -811,8 +855,7 @@ int ipu7_isys_csi_phy_powerup(struct ipu7_isys_csi2 *csi2)
 	}
 
 	ipu7_isys_csi_ctrl_cfg(csi2);
-	/* TODO: get the DT and VC from the frame descriptor */
-	ipu7_isys_csi_ctrl_dids_config(isys, id, 0, MIPI_CSI2_DT_RAW10);
+	ipu7_isys_csi_ctrl_dids_config(csi2, id);
 
 	ipu7_isys_phy_config(isys, id, lanes, aggregation);
 	gpreg_write(isys, id, PHY_RESET, 1);
@@ -852,7 +895,7 @@ void ipu7_isys_csi_phy_powerdown(struct ipu7_isys_csi2 *csi2)
 	struct ipu7_isys *isys = csi2->isys;
 
 	ipu7_isys_csi_phy_reset(isys, csi2->port);
-	if (is_ipu7p5(isys->adev->isp->hw_ver) &&
+	if (!is_ipu7(isys->adev->isp->hw_ver) &&
 	    csi2->nlanes > 2 && csi2->port == PORT_A)
 		ipu7_isys_csi_phy_reset(isys, PORT_B);
 }

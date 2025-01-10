@@ -28,3 +28,13 @@ config VIDEO_INTEL_IPU7_MGC
 
 	  If you want to the MGC devices exposed to user as media entity,
 	  you must select this option, otherwise no.
+
+config VIDEO_INTEL_IPU7_ISYS_RESET
+	tristate "IPU7 ISYS RESET"
+	depends on VIDEO_INTEL_IPU7
+	default n
+	help
+	  This is to support ISYS reset in Intel IPU7 IPU driver and
+	  used for HDMI to MIPI device hot plug use cases.
+
+	  To compile this driver, say Y here!

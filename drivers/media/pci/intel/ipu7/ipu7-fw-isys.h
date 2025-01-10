@@ -17,14 +17,6 @@ struct ipu7_isys;
 
 /* From here on type defines not coming from the ISYSAPI interface */
 
-#ifndef UINT8_MAX
-#define UINT8_MAX       (0xffUL)
-#endif
-
-#ifndef UINT16_MAX
-#define UINT16_MAX       (0xffffUL)
-#endif
-
 int ipu7_fw_isys_init(struct ipu7_isys *isys);
 void ipu7_fw_isys_release(struct ipu7_isys *isys);
 int ipu7_fw_isys_open(struct ipu7_isys *isys);

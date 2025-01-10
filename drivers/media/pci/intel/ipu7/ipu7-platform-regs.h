@@ -114,20 +114,12 @@
  */
 #define IS_UC_TO_SW_IRQ_MASK			0xf
 
-/*
- * IPU6 uses uniform address within IPU, therefore all subsystem registers
- * locates in one signle space starts from 0 but in different sctions with
- * different addresses, the subsystem offsets are defined to 0 as the
- * register definition will have the address offset to 0.
- */
-#define IPU_ISYS_SPC_OFFSET		0x210000
+#define IPU_ISYS_SPC_OFFSET			0x210000
+#define IPU7_PSYS_SPC_OFFSET			0x118000
+#define IPU_ISYS_DMEM_OFFSET			0x200000
+#define IPU_PSYS_DMEM_OFFSET			0x100000
 
-#define IPU7_PSYS_SPC_OFFSET		0x118000
-
-#define IPU_ISYS_DMEM_OFFSET		0x200000
-#define IPU_PSYS_DMEM_OFFSET		0x100000
-
-#define IPU7_ISYS_CSI_PORT_NUM		4
+#define IPU7_ISYS_CSI_PORT_NUM			4
 
 /* IRQ-related registers in PSYS */
 #define IPU_REG_PSYS_TO_SW_IRQ_CNTL_EDGE		0x134000
@@ -146,8 +138,9 @@ enum ipu7_device_buttress_psys_domain_pos {
 	IPU_PSYS_SUBDOMAIN_BB		= 1,
 };
 
-#define IPU_PSYS_DOMAIN_POWER_MASK  (BIT(IPU_PSYS_SUBDOMAIN_LB) | \
-				     BIT(IPU_PSYS_SUBDOMAIN_BB))
+#define IPU7_PSYS_DOMAIN_POWER_MASK		(BIT(IPU_PSYS_SUBDOMAIN_LB) | \
+						 BIT(IPU_PSYS_SUBDOMAIN_BB))
+#define IPU8_PSYS_DOMAIN_POWER_MASK		BIT(IPU_PSYS_SUBDOMAIN_LB)
 #define IPU_PSYS_DOMAIN_POWER_IN_PROGRESS	BIT(31)
 
 #endif /* IPU7_PLATFORM_REGS_H */

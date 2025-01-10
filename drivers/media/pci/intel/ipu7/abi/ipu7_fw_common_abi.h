@@ -57,11 +57,7 @@ struct ia_gofo_version_s {
 	{.major = (major_val), .minor = (minor_val), .subminor = \
 	(subminor_val), .patch = (patch_val)}
 
-#define IA_GOFO_MSG_VERSION_IS_VALID(version_struct) \
-	(!((version_struct).major == 0U) && ((version_struct).minor == 0U))
-
 #define IA_GOFO_MSG_VERSION_LIST_MAX_ENTRIES	(3U)
-
 #define IA_GOFO_MSG_RESERVED_SIZE		(3U)
 
 struct ia_gofo_msg_version_list {
@@ -69,6 +65,7 @@ struct ia_gofo_msg_version_list {
 	u8 reserved[IA_GOFO_MSG_RESERVED_SIZE];
 	struct ia_gofo_version_s versions[IA_GOFO_MSG_VERSION_LIST_MAX_ENTRIES];
 };
+
 #pragma pack(pop)
 
 static inline void ia_gofo_common_abi_test_func(void)
@@ -80,19 +77,13 @@ static inline void ia_gofo_common_abi_test_func(void)
 #define TLV_TYPE_PADDING		(0U)
 
 #pragma pack(push, 1)
-#define IA_GOFO_ABI_SIZEOF_FIELD(struct_type, field) \
-	(sizeof(((struct_type *)0)->field))
+
 #define IA_GOFO_ABI_BITS_PER_BYTE	(8U)
 
 struct ia_gofo_tlv_header {
 	u16 tlv_type;
 	u16 tlv_len32;
 };
-
-#define TLV_MAX_LEN \
-	((((u32)(1U)) << (IA_GOFO_ABI_SIZEOF_FIELD(struct \
-	ia_gofo_tlv_header, tlv_len32) * IA_GOFO_ABI_BITS_PER_BYTE)) \
-	* TLV_ITEM_ALIGNMENT)
 
 struct ia_gofo_tlv_list {
 	u16 num_elems;
@@ -112,8 +103,6 @@ static inline void ia_gofo_msg_tlv_test_func(void)
 
 #define IA_GOFO_MODULO(dividend, divisor) ((dividend) % (divisor))
 
-#define IA_GOFO_ASSERT(expr)
-
 #define IA_GOFO_MSG_ERR_MAX_DETAILS		(4U)
 #define IA_GOFO_MSG_ERR_OK			(0U)
 #define IA_GOFO_MSG_ERR_UNSPECIFED		(0xffffffffU)
@@ -126,6 +115,7 @@ struct ia_gofo_msg_err {
 	u32 err_code;
 	u32 err_detail[IA_GOFO_MSG_ERR_MAX_DETAILS];
 };
+
 #pragma pack(pop)
 
 #define IA_GOFO_MSG_ERR_GROUP_APP_EXT_START	(16U)
@@ -172,6 +162,7 @@ struct ia_gofo_msg_header_ack {
 struct ia_gofo_msg_general_err {
 	struct ia_gofo_msg_header_ack header;
 };
+
 #pragma pack(pop)
 
 static inline void ia_gofo_msg_header_test_func(void)
@@ -203,6 +194,7 @@ struct ia_gofo_msg_indirect {
 	struct ia_gofo_tlv_header ref_header;
 	ia_gofo_addr_t ref_msg_ptr;
 };
+
 #pragma pack(pop)
 
 static inline void ia_gofo_msg_indirect_test_func(void)
@@ -234,6 +226,7 @@ struct ia_gofo_msg_log {
 	struct ia_gofo_msg_header header;
 	struct ia_gofo_msg_log_info_ts log_info_ts;
 };
+
 #pragma pack(pop)
 
 static inline void ia_gofo_msg_log_test_func(void)

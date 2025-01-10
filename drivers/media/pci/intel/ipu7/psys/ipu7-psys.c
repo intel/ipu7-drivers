@@ -21,15 +21,6 @@
 #include "ipu7-platform-regs.h"
 #include "ipu7-fw-psys.h"
 
-static bool early_pg_transfer;
-module_param(early_pg_transfer, bool, 0664);
-MODULE_PARM_DESC(early_pg_transfer,
-		 "Copy PGs back to user after resource allocation");
-
-bool enable_power_gating = true;
-module_param(enable_power_gating, bool, 0664);
-MODULE_PARM_DESC(enable_power_gating, "enable power gating");
-
 #define DOMAIN_POWE_TIMEOUT_US		(200 * USEC_PER_MSEC)
 
 static const struct ipu7_msg_to_str ps_fw_msg[] = {
@@ -53,17 +44,22 @@ static const struct ipu7_msg_to_str ps_fw_msg[] = {
 void ipu7_psys_subdomains_power(struct ipu7_psys *psys, bool on)
 {
 	struct device *dev = &psys->adev->auxdev.dev;
-	u32 val, req;
+	struct ipu7_device *isp = psys->adev->isp;
+	void __iomem *base = isp->base;
+	u32 mask;
+	u32 val;
+	u32 req;
 	int ret;
-	void __iomem *base = psys->adev->isp->base;
 
 	/* power domain req */
-	req = on ? IPU_PSYS_DOMAIN_POWER_MASK : 0;
+	mask = is_ipu8(isp->hw_ver) ? IPU8_PSYS_DOMAIN_POWER_MASK :
+		IPU7_PSYS_DOMAIN_POWER_MASK;
+	req = on ? mask : 0;
 	val = readl(base + BUTTRESS_REG_PS_DOMAINS_STATUS);
 
 	dev_dbg(dev, "power %s psys sub-domains. status: 0x%x\n",
 		on ? "UP" : "DOWN", val);
-	if ((val & IPU_PSYS_DOMAIN_POWER_MASK) == req) {
+	if ((val & mask) == req) {
 		dev_warn(dev,
 			 "psys sub-domains power already in request state.\n");
 		return;
@@ -72,7 +68,7 @@ void ipu7_psys_subdomains_power(struct ipu7_psys *psys, bool on)
 	ret = readl_poll_timeout(base + BUTTRESS_REG_PS_DOMAINS_STATUS,
 				 val,
 				 !(val & IPU_PSYS_DOMAIN_POWER_IN_PROGRESS) &&
-				 ((val & IPU_PSYS_DOMAIN_POWER_MASK) == req),
+				 ((val & mask) == req),
 				 100, DOMAIN_POWE_TIMEOUT_US);
 	if (ret)
 		dev_err(dev,
@@ -158,7 +154,7 @@ static void ipu7_psys_handle_graph_open_ack(struct ipu7_psys *psys,
 		u32 option_bytes = msg_tlv_item->tlv_len32 *
 			TLV_ITEM_ALIGNMENT;
 		struct ipu7_msg_graph_open_ack_task_q_info *msg_option =
-			(struct ipu7_msg_graph_open_ack_task_q_info *)msg_tlv_item;
+			(void *)msg_tlv_item;
 
 		switch (option_type) {
 		case IPU_MSG_GRAPH_ACK_TASK_Q_INFO:
@@ -196,10 +192,10 @@ static int ipu7_psys_handle_task_done(struct ipu7_psys *psys,
 		(const struct ipu7_msg_task_done *)buffer;
 	const struct ia_gofo_msg_header_ack *ack_header = &ack_msg->header;
 	const struct ia_gofo_msg_header *msg_header = &ack_header->header;
-	struct ipu_psys_task_queue *task_queue;
+	struct ipu_psys_task_queue *tq;
 	struct device *dev = &psys->dev;
 	struct ipu7_psys_stream *ip;
-	u32 i, index_id = 0;
+	struct ipu_psys_task_ack *event;
 
 	if (ack_msg->graph_id > (u8)IPU_PSYS_MAX_GRAPH_NUMS) {
 		dev_err(dev, "%s: graph id %d\n", __func__, ack_msg->graph_id);
@@ -212,40 +208,53 @@ static int ipu7_psys_handle_task_done(struct ipu7_psys *psys,
 		return -EINVAL;
 	}
 
-	mutex_lock(&ip->event_mutex);
-	task_queue = (struct ipu_psys_task_queue *)msg_header->user_token;
-	if (!task_queue) {
+	tq = (void *)(uintptr_t)msg_header->user_token;
+	if (!tq) {
 		dev_err(dev, "%s: task_token is NULL\n", __func__);
-		mutex_unlock(&ip->event_mutex);
 		return -EINVAL;
 	}
 
-	if (task_queue->task_state != IPU_MSG_TASK_STATE_WAIT_DONE) {
-		dev_err(dev, "%s: task_queue %d graph %d node %d error %d\n",
-			__func__, task_queue->index, ack_msg->graph_id,
-			ack_msg->node_ctx_id, task_queue->task_state);
+	mutex_lock(&ip->task_mutex);
+	if (tq->task_state != IPU_MSG_TASK_STATE_WAIT_DONE) {
+		dev_err(dev, "%s: graph %d node %d error %d\n", __func__,
+			ack_msg->graph_id, ack_msg->node_ctx_id,
+			tq->task_state);
 
-		mutex_unlock(&ip->event_mutex);
+		list_move_tail(&tq->list, &ip->tq_list);
+		mutex_unlock(&ip->task_mutex);
 		return -ENOENT;
 	}
 
-	index_id = task_queue->index;
-	task_queue->available = 1;
-	task_queue->task_state = IPU_MSG_TASK_STATE_DONE;
-	dev_dbg(dev, "%s: task_token(%p, %d)\n", __func__, task_queue,
-		index_id);
+	tq->task_state = IPU_MSG_TASK_STATE_DONE;
+	dev_dbg(dev, "%s: task_token(%p)\n", __func__, tq);
 
-	if (ip->event_queue[ip->event_write_index].available != 0U) {
-		i = ip->event_write_index;
-		ip->event_queue[i].graph_id = ack_msg->graph_id;
-		ip->event_queue[i].node_ctx_id = ack_msg->node_ctx_id;
-		ip->event_queue[i].frame_id = ack_msg->frame_id;
-		ip->event_queue[i].err_code = error;
-		ip->event_queue[i].available = 0U;
-		ip->event_write_index = (i + 1U) % MAX_TASK_EVENT_QUEUE_SIZE;
+	list_move_tail(&tq->list, &ip->tq_list);
+	mutex_unlock(&ip->task_mutex);
+
+	mutex_lock(&ip->event_mutex);
+	if (!list_empty(&ip->event_list)) {
+		event = list_first_entry(&ip->event_list,
+				       struct ipu_psys_task_ack, list);
+		event->graph_id = ack_msg->graph_id;
+		event->node_ctx_id = ack_msg->node_ctx_id;
+		event->frame_id = ack_msg->frame_id;
+		event->err_code = error;
+
+		list_move_tail(&event->list, &ip->ack_list);
 	} else {
-		dev_dbg(dev, "%s: event queue is full(%d)\n", __func__,
-			MAX_TASK_EVENT_QUEUE_SIZE);
+		dev_dbg(dev, "event queue is full, add new one\n");
+		event = kzalloc(sizeof(*event), GFP_KERNEL);
+
+		if (event) {
+			event->graph_id = ack_msg->graph_id;
+			event->node_ctx_id = ack_msg->node_ctx_id;
+			event->frame_id = ack_msg->frame_id;
+			event->err_code = error;
+
+			list_add_tail(&event->list, &ip->ack_list);
+		} else {
+			dev_err(dev, "failed to alloc event buf\n");
+		}
 	}
 	mutex_unlock(&ip->event_mutex);
 
@@ -339,28 +348,30 @@ void ipu7_psys_handle_events(struct ipu7_psys *psys)
 	} while (1);
 }
 
-static int ipu7_psys_complete_event(struct ipu7_psys_stream *ip,
-				    struct ipu_psys_event *event)
+static int ipu7_psys_get_event(struct ipu7_psys_stream *ip,
+			       struct ipu_psys_event *event)
 {
-	u32 i;
+	struct ipu_psys_task_ack *ack;
 
 	mutex_lock(&ip->event_mutex);
-	/* Check if there is already an event in the queue */
-	i = ip->event_read_index;
-	if (ip->event_queue[i].available == 1U) {
+	/* Check if there is already an event in the list */
+	if (list_empty(&ip->ack_list)) {
 		mutex_unlock(&ip->event_mutex);
 		return -EAGAIN;
 	}
-	ip->event_read_index = (i + 1U) % MAX_TASK_EVENT_QUEUE_SIZE;
-	event->graph_id = ip->event_queue[i].graph_id;
-	event->node_ctx_id = ip->event_queue[i].node_ctx_id;
-	event->frame_id = ip->event_queue[i].frame_id;
-	event->error = ip->event_queue[i].err_code;
-	ip->event_queue[i].available = 1;
+
+	ack = list_first_entry(&ip->ack_list, struct ipu_psys_task_ack, list);
+
+	event->graph_id = ack->graph_id;
+	event->node_ctx_id = ack->node_ctx_id;
+	event->frame_id = ack->frame_id;
+	event->error = ack->err_code;
+
+	list_move_tail(&ack->list, &ip->event_list);
 	mutex_unlock(&ip->event_mutex);
 
-	dev_dbg(&ip->fh->psys->dev, "event %d graph %d cb %d frame %d dequeued",
-		i, event->graph_id, event->node_ctx_id, event->frame_id);
+	dev_dbg(&ip->fh->psys->dev, "event graph %d cb %d frame %d dequeued",
+		event->graph_id, event->node_ctx_id, event->frame_id);
 
 	return 0;
 }
@@ -369,18 +380,19 @@ long ipu7_ioctl_dqevent(struct ipu_psys_event *event,
 			struct ipu7_psys_fh *fh, unsigned int f_flags)
 {
 	struct ipu7_psys *psys = fh->psys;
-	int rval = 0;
+	int ret = 0;
 
 	dev_dbg(&psys->adev->auxdev.dev, "IOC_DQEVENT\n");
 
 	if (!(f_flags & O_NONBLOCK)) {
-		rval = wait_event_interruptible(fh->wait,
-						!ipu7_psys_complete_event(fh->ip, event));
-		if (rval == -ERESTARTSYS)
-			return rval;
+		ret = wait_event_interruptible(fh->wait,
+					       !ipu7_psys_get_event(fh->ip,
+								    event));
+		if (ret == -ERESTARTSYS)
+			return ret;
 	} else {
-		rval = ipu7_psys_complete_event(fh->ip, event);
+		ret = ipu7_psys_get_event(fh->ip, event);
 	}
 
-	return rval;
+	return ret;
 }

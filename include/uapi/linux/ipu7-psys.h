@@ -112,6 +112,7 @@ struct node_ternimal {
  * @num_terms:		Number of enabled terms in the node
  * @profiles:		bitmap settings on the node
  * @terminals:		terminal info on the node
+ * @num_frags:		Number of fragments
  */
 struct graph_node {
 	uint8_t node_rsrc_id;
@@ -124,7 +125,7 @@ struct graph_node {
 /**
  * struct graph_link_ep - link endpoint description
  *
- * Link endpoint is used to descripe the connection between different nodes.
+ * Link endpoint is used to describe the connection between different nodes.
  *
  * @node_ctx_id:	Node ID as described in the list of nodes in the fgraph
  * @term_id:		Term ID as described in the list of terms in the fgraph
@@ -213,6 +214,8 @@ struct ipu_psys_term_buffers {
  * @payload_reuse_bm:	Any terminal marked here must be enabled
  * @term_buf_count:	the number of terminal buffers
  * @task_buffers:	terminal buffers on the task request
+ * @num_frags:         the number of fragments
+ * @frag_buffers:      the buffer information of fragments
  */
 struct ipu_psys_task_request {
 	uint8_t graph_id;

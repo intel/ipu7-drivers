@@ -27,13 +27,14 @@
 #include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/types.h>
+#include <linux/version.h>
 
 #include <media/ipu-bridge.h>
 #include <media/media-entity.h>
-#include <media/v4l2-subdev.h>
-#include <media/v4l2-fwnode.h>
-#include <media/v4l2-device.h>
 #include <media/v4l2-async.h>
+#include <media/v4l2-device.h>
+#include <media/v4l2-fwnode.h>
+#include <media/v4l2-subdev.h>
 
 #include "abi/ipu7_fw_isys_abi.h"
 
@@ -94,7 +95,9 @@ skip_unregister_subdev:
 
 static void isys_stream_init(struct ipu7_isys *isys)
 {
-	for (int i = 0; i < IPU_ISYS_MAX_STREAMS; i++) {
+	unsigned int i;
+
+	for (i = 0; i < IPU_ISYS_MAX_STREAMS; i++) {
 		mutex_init(&isys->streams[i].mutex);
 		init_completion(&isys->streams[i].stream_open_completion);
 		init_completion(&isys->streams[i].stream_close_completion);
@@ -143,9 +146,9 @@ static int isys_notifier_bound(struct v4l2_async_notifier *notifier,
 {
 	struct ipu7_isys *isys = container_of(notifier,
 					      struct ipu7_isys, notifier);
-	struct device *dev = &isys->adev->auxdev.dev;
 	struct sensor_async_sd *s_asd =
 		container_of(asc, struct sensor_async_sd, asc);
+	struct device *dev = &isys->adev->auxdev.dev;
 	int ret;
 
 	ret = ipu_bridge_instantiate_vcm(sd->dev);
@@ -298,7 +301,6 @@ static void isys_csi2_unregister_subdevices(struct ipu7_isys *isys)
 {
 	const struct ipu7_isys_internal_csi2_pdata *csi2 =
 		&isys->pdata->ipdata->csi2;
-
 	unsigned int i;
 
 	for (i = 0; i < csi2->nports; i++)
@@ -321,6 +323,7 @@ static int isys_csi2_register_subdevices(struct ipu7_isys *isys)
 	}
 
 	isys->isr_csi2_mask = IPU7_CSI_RX_LEGACY_IRQ_MASK;
+
 	return 0;
 
 fail:
@@ -482,14 +485,14 @@ static int isys_register_devices(struct ipu7_isys *isys)
 		goto out_tpg_unregister_subdevices;
 
 #endif
+
 	ret = isys_notifier_init(isys);
 	if (ret)
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 		goto out_tpg_unregister_subdevices;
 #else
-	goto out_csi2_unregister_subdevices;
+		goto out_csi2_unregister_subdevices;
 #endif
-
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 	ret = v4l2_device_register_subdev_nodes(&isys->v4l2_dev);
 	if (ret)
@@ -503,7 +506,6 @@ out_isys_notifier_cleanup:
 	isys_notifier_cleanup(isys);
 out_tpg_unregister_subdevices:
 	isys_tpg_unregister_subdevices(isys);
-
 #endif
 out_csi2_unregister_subdevices:
 	isys_csi2_unregister_subdevices(isys);
@@ -537,11 +539,9 @@ static void isys_unregister_devices(struct ipu7_isys *isys)
 
 static void enable_csi2_legacy_irq(struct ipu7_isys *isys, bool enable)
 {
-	u32 offset, mask;
+	u32 offset = IS_IO_CSI2_LEGACY_IRQ_CTRL_BASE;
 	void __iomem *base = isys->pdata->base;
-
-	offset = IS_IO_CSI2_LEGACY_IRQ_CTRL_BASE;
-	mask = isys->isr_csi2_mask;
+	u32 mask = isys->isr_csi2_mask;
 
 	if (!enable) {
 		writel(mask, base + offset + IRQ_CTL_CLEAR);
@@ -557,11 +557,9 @@ static void enable_csi2_legacy_irq(struct ipu7_isys *isys, bool enable)
 
 static void enable_to_sw_irq(struct ipu7_isys *isys, bool enable)
 {
-	u32 offset, mask;
 	void __iomem *base = isys->pdata->base;
-
-	offset = IS_UC_CTRL_BASE;
-	mask = IS_UC_TO_SW_IRQ_MASK;
+	u32 mask = IS_UC_TO_SW_IRQ_MASK;
+	u32 offset = IS_UC_CTRL_BASE;
 
 	if (!enable) {
 		writel(0, base + offset + TO_SW_IRQ_CNTL_ENABLE);
@@ -600,8 +598,8 @@ static void isys_cleanup_hw(struct ipu7_isys *isys)
 static int isys_runtime_pm_resume(struct device *dev)
 {
 	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
-	struct ipu7_device *isp = adev->isp;
 	struct ipu7_isys *isys = ipu7_bus_get_drvdata(adev);
+	struct ipu7_device *isp = adev->isp;
 	unsigned long flags;
 	int ret;
 
@@ -614,7 +612,7 @@ static int isys_runtime_pm_resume(struct device *dev)
 
 	cpu_latency_qos_update_request(&isys->pm_qos, ISYS_PM_QOS_VALUE);
 
-	ret = ipu7_buttress_start_tsc_sync(isp);
+	ret = ipu_buttress_start_tsc_sync(isp);
 	if (ret)
 		return ret;
 
@@ -705,6 +703,9 @@ static void isys_remove(struct auxiliary_device *auxdev)
 
 	mutex_destroy(&isys->stream_mutex);
 	mutex_destroy(&isys->mutex);
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	mutex_destroy(&isys->reset_mutex);
+#endif
 }
 
 #ifdef CONFIG_DEBUG_FS
@@ -860,11 +861,11 @@ void ipu7_cleanup_fw_msg_bufs(struct ipu7_isys *isys)
 	spin_unlock_irqrestore(&isys->listlock, flags);
 }
 
-void ipu7_put_fw_msg_buf(struct ipu7_isys *isys, u64 data)
+void ipu7_put_fw_msg_buf(struct ipu7_isys *isys, uintptr_t data)
 {
 	struct isys_fw_msgs *msg;
+	void *ptr = (void *)data;
 	unsigned long flags;
-	u64 *ptr = (u64 *)(unsigned long)data;
 
 	if (WARN_ON_ONCE(!ptr))
 		return;
@@ -921,6 +922,10 @@ static int isys_probe(struct auxiliary_device *auxdev,
 
 	mutex_init(&isys->mutex);
 	mutex_init(&isys->stream_mutex);
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	mutex_init(&isys->reset_mutex);
+	isys->in_reset = false;
+#endif
 
 	spin_lock_init(&isys->listlock);
 	INIT_LIST_HEAD(&isys->framebuflist);
@@ -954,6 +959,9 @@ static int isys_probe(struct auxiliary_device *auxdev,
 	if (ret)
 		goto out_cleanup;
 
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	mutex_destroy(&isys->reset_mutex);
+#endif
 	ipu7_mmu_hw_cleanup(adev->mmu);
 	pm_runtime_put(&auxdev->dev);
 
@@ -963,7 +971,7 @@ out_cleanup:
 	isys_unregister_devices(isys);
 	ipu7_fw_isys_release(isys);
 
-	for (int i = 0; i < IPU_ISYS_MAX_STREAMS; i++)
+	for (unsigned int i = 0; i < IPU_ISYS_MAX_STREAMS; i++)
 		mutex_destroy(&isys->streams[i].mutex);
 
 	mutex_destroy(&isys->mutex);
@@ -986,7 +994,7 @@ struct ipu7_csi2_error {
  * Strings corresponding to CSI-2 receiver errors are here.
  * Corresponding macros are defined in the header file.
  */
-static struct ipu7_csi2_error dphy_rx_errors[] = {
+static const struct ipu7_csi2_error dphy_rx_errors[] = {
 	{ "Error handler FIFO full", false },
 	{ "Reserved Short Packet encoding detected", true },
 	{ "Reserved Long Packet encoding detected", true },
@@ -1004,9 +1012,9 @@ static struct ipu7_csi2_error dphy_rx_errors[] = {
 
 static void ipu7_isys_register_errors(struct ipu7_isys_csi2 *csi2)
 {
-	int mask = IPU7_CSI_RX_ERROR_IRQ_MASK;
 	u32 offset = IS_IO_CSI2_ERR_LEGACY_IRQ_CTL_BASE(csi2->port);
 	u32 status = readl(csi2->base + offset + IRQ_CTL_STATUS);
+	int mask = IPU7_CSI_RX_ERROR_IRQ_MASK;
 
 	if (!status)
 		return;
@@ -1020,9 +1028,9 @@ static void ipu7_isys_register_errors(struct ipu7_isys_csi2 *csi2)
 
 static void ipu7_isys_csi2_error(struct ipu7_isys_csi2 *csi2)
 {
-	struct ipu7_csi2_error *errors;
-	u32 status;
+	struct ipu7_csi2_error const *errors;
 	unsigned int i;
+	u32 status;
 
 	/* Register errors once more in case of error interrupts are disabled */
 	ipu7_isys_register_errors(csi2);
@@ -1071,11 +1079,11 @@ static const struct resp_to_msg is_fw_msg[] = {
 int isys_isr_one(struct ipu7_bus_device *adev)
 {
 	struct ipu7_isys *isys = ipu7_bus_get_drvdata(adev);
-	struct ipu7_insys_resp *resp;
 	struct ipu7_isys_stream *stream = NULL;
-	struct ia_gofo_msg_err err_info;
 	struct device *dev = &adev->auxdev.dev;
 	struct ipu7_isys_csi2 *csi2 = NULL;
+	struct ia_gofo_msg_err err_info;
+	struct ipu7_insys_resp *resp;
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 	struct ipu7_isys_tpg *tpg = NULL;
 #endif
@@ -1216,8 +1224,8 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 		if (tpg)
 			ipu7_isys_tpg_eof_event_by_stream(stream);
-#endif
 
+#endif
 		dev_dbg(dev, "eof: stream %d(index %u) ts 0x%16.16llx\n",
 			resp->stream_id,
 			stream->seq[stream->seq_index].sequence, ts);
@@ -1231,15 +1239,16 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 	ipu7_isys_put_stream(stream);
 leave:
 	ipu7_fw_isys_put_resp(isys);
+
 	return 0;
 }
 
 static void ipu7_isys_csi2_isr(struct ipu7_isys_csi2 *csi2)
 {
-	u32 sync, offset;
-	struct ipu7_device *isp = csi2->isys->adev->isp;
 	struct device *dev = &csi2->isys->adev->auxdev.dev;
+	struct ipu7_device *isp = csi2->isys->adev->isp;
 	struct ipu7_isys_stream *s;
+	u32 sync, offset;
 	u32 fe = 0;
 	u8 vc;
 
@@ -1250,7 +1259,7 @@ static void ipu7_isys_csi2_isr(struct ipu7_isys_csi2 *csi2)
 	writel(sync, csi2->base + offset + IRQ_CTL_CLEAR);
 	dev_dbg(dev, "csi2-%u sync status 0x%08x\n", csi2->port, sync);
 
-	if (is_ipu7p5(isp->hw_ver)) {
+	if (!is_ipu7(isp->hw_ver)) {
 		fe = readl(csi2->base + offset + IRQ1_CTL_STATUS);
 		writel(fe, csi2->base + offset + IRQ1_CTL_CLEAR);
 		dev_dbg(dev, "csi2-%u FE status 0x%08x\n", csi2->port, fe);
@@ -1262,7 +1271,7 @@ static void ipu7_isys_csi2_isr(struct ipu7_isys_csi2 *csi2)
 		if (!s)
 			continue;
 
-		if (is_ipu7p5(isp->hw_ver)) {
+		if (!is_ipu7(isp->hw_ver)) {
 			if (sync & IPU7P5_CSI_RX_SYNC_FS_VC & (1 << vc))
 				ipu7_isys_csi2_sof_event_by_stream(s);
 
@@ -1281,9 +1290,9 @@ static void ipu7_isys_csi2_isr(struct ipu7_isys_csi2 *csi2)
 irqreturn_t isys_isr(struct ipu7_bus_device *adev)
 {
 	struct ipu7_isys *isys = ipu7_bus_get_drvdata(adev);
+	u32 status_csi, status_sw, csi_offset, sw_offset;
 	struct device *dev = &isys->adev->auxdev.dev;
 	void __iomem *base = isys->pdata->base;
-	u32 status_csi, status_sw, csi_offset, sw_offset;
 
 	spin_lock(&isys->power_lock);
 	if (!isys->power) {
@@ -1371,5 +1380,10 @@ MODULE_AUTHOR("Tianshu Qiu <tian.shu.qiu@intel.com>");
 MODULE_AUTHOR("Qingwu Zhang <qingwu.zhang@intel.com>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Intel ipu7 input system driver");
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+MODULE_IMPORT_NS("INTEL_IPU7");
+MODULE_IMPORT_NS("INTEL_IPU_BRIDGE");
+#else
 MODULE_IMPORT_NS(INTEL_IPU7);
 MODULE_IMPORT_NS(INTEL_IPU_BRIDGE);
+#endif

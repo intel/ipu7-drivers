@@ -37,6 +37,8 @@ static const u32 tpg_supported_codes[] = {
 	0,
 };
 
+#define IPU_ISYS_FREQ		533000000UL
+
 static const struct v4l2_subdev_video_ops tpg_sd_video_ops = {
 	.s_stream = tpg_set_stream,
 };
@@ -67,7 +69,7 @@ static const struct v4l2_ctrl_ops ipu7_isys_tpg_ctrl_ops = {
 	.s_ctrl = ipu7_isys_tpg_s_ctrl,
 };
 
-static s64 ipu7_isys_tpg_rate(struct ipu7_isys_tpg *tpg, unsigned int bpp)
+static u64 ipu7_isys_tpg_rate(struct ipu7_isys_tpg *tpg, unsigned int bpp)
 {
 	return MGC_PPC * IPU_ISYS_FREQ / bpp;
 }
@@ -276,7 +278,7 @@ static void ipu7_mipigen_regdump(const struct ipu7_isys_tpg *tpg,
 	dev_dbg(dev, "---------MGC REG DUMP END----------");
 }
 
-#define TPG_STOP_TIMEOUT 50000
+#define TPG_STOP_TIMEOUT 500000
 static int tpg_stop_stream(const struct ipu7_isys_tpg *tpg)
 {
 	struct device *dev = &tpg->isys->adev->auxdev.dev;

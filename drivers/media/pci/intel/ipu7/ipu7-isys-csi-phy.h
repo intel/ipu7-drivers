@@ -11,8 +11,6 @@ struct ipu7_isys;
 #define PHY_MODE_DPHY		0
 #define PHY_MODE_CPHY		1
 
-int ipu7_isys_csi_ctrl_dids_config(struct ipu7_isys *isys, u32 id,
-				   u8 vc, u8 dt);
 int ipu7_isys_csi_phy_powerup(struct ipu7_isys_csi2 *csi2);
 void ipu7_isys_csi_phy_powerdown(struct ipu7_isys_csi2 *csi2);
 #endif

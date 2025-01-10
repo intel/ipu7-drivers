@@ -73,6 +73,12 @@ enum ia_gofo_buttress_reg_id {
 	IA_GOFO_FW_BOOT_ID_MAX
 };
 
+enum ia_gofo_boot_uc_tile_frequency_units {
+	IA_GOFO_FW_BOOT_UC_FREQUENCY_UNITS_MHZ = 0,
+	IA_GOFO_FW_BOOT_UC_FREQUENCY_UNITS_KHZ = 1,
+	IA_GOFO_FW_BOOT_UC_FREQUENCY_UNITS_N
+};
+
 #define IA_GOFO_FW_BOOT_STATE_IS_CRITICAL(boot_state) \
 	(0xdead0000U == ((boot_state) & 0xffff0000U))
 
@@ -82,11 +88,12 @@ struct ia_gofo_boot_config {
 	struct ia_gofo_msg_version_list client_version_support;
 	ia_gofo_addr_t pkg_dir;
 	ia_gofo_addr_t subsys_config;
-	u32 uc_tile_frequency_mhz;
+	u32 uc_tile_frequency;
 	u16 checksum;
-	u8 padding[2];
+	u8 uc_tile_frequency_units;
+	u8 padding[1];
 	u32 reserved[IA_GOFO_BOOT_RESERVED_SIZE];
-	struct syscom_config_s syscom_context_config[1];
+	struct syscom_config_s syscom_context_config;
 };
 
 struct ia_gofo_secondary_boot_config {
@@ -97,12 +104,8 @@ struct ia_gofo_secondary_boot_config {
 	u16 checksum;
 	u8 padding[2];
 	u32 reserved2[IA_GOFO_BOOT_SECONDARY_RESERVED_SIZE];
-	struct syscom_config_s syscom_context_config[1];
+	struct syscom_config_s syscom_context_config;
 };
-
-#define FW_BOOT_CONFIG_ALLOC_SIZE(num_queues) \
-	((sizeof(struct ia_gofo_boot_config) + \
-	(sizeof(struct syscom_queue_params_config) * num_queues)))
 
 #pragma pack(pop)
 
@@ -126,7 +129,10 @@ enum ia_gofo_boot_state {
 	IA_GOFO_FW_BOOT_STATE_SECONDARY_BOOT_CONFIG_READY = 0x57a7b000U,
 	IA_GOFO_FW_BOOT_STATE_UNINIT = 0x57a7e000U,
 	IA_GOFO_FW_BOOT_STATE_STARTING_0 = 0x57a7d000U,
-	IA_GOFO_FW_BOOT_STATE_MEM_INIT_DONE = 0x57a7d100U,
+	IA_GOFO_FW_BOOT_STATE_CACHE_INIT_DONE = 0x57a7d010U,
+	IA_GOFO_FW_BOOT_STATE_MEM_INIT_DONE = 0x57a7d020U,
+	IA_GOFO_FW_BOOT_STATE_STACK_INIT_DONE = 0x57a7d030U,
+	IA_GOFO_FW_BOOT_STATE_EARLY_BOOT_DONE = 0x57a7d100U,
 	IA_GOFO_FW_BOOT_STATE_BOOT_CONFIG_START = 0x57a7d200U,
 	IA_GOFO_FW_BOOT_STATE_QUEUE_INIT_DONE = 0x57a7d300U,
 	IA_GOFO_FW_BOOT_STATE_READY = 0x57a7e100U,

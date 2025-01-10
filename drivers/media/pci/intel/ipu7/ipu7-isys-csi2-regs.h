@@ -966,8 +966,8 @@
 #define MPF_16_IRQ_CNTRL_ENABLE			0x240
 
 /* software config the phy */
-#define IS_IO_CSI2_GPREGS_BASE(i)		(IS_IO_BASE + 0x53400 + \
-						 0x1000 * (i))
+#define IS_IO_CSI2_GPREGS_BASE		(IS_IO_BASE + 0x53400)
+#define IPU8_IS_IO_CSI2_GPREGS_BASE	(IS_IO_BASE + 0x40e00)
 #define CSI_ADAPT_LAYER_SRST		0x0
 #define MPF_SRST_RST			0x4
 #define CSI_ERR_IRQ_CTRL_SRST		0x8
@@ -1179,19 +1179,19 @@ enum CSI2HOST_SELECTION {
 #define IPU7P5_ISYS_LEGACY_IRQ_CSI2(port)	(0x7 << (port))
 
 /* ---------------------------------------------------------------- */
-#define CSI_REG_BASE			0x220000
-#define CSI_REG_BASE_PORT(id)		((id) * 0x1000)
+#define CSI_REG_BASE				0x220000
+#define CSI_REG_BASE_PORT(id)			((id) * 0x1000)
 
-/* CSI Port Genral Purpose Registers */
-#define CSI_REG_PORT_GPREG_SRST                 0x0
-#define CSI_REG_PORT_GPREG_CSI2_SLV_REG_SRST    0x4
-#define CSI_REG_PORT_GPREG_CSI2_PORT_CONTROL    0x8
+/* CSI Port General Purpose Registers */
+#define CSI_REG_PORT_GPREG_SRST			0x0
+#define CSI_REG_PORT_GPREG_CSI2_SLV_REG_SRST	0x4
+#define CSI_REG_PORT_GPREG_CSI2_PORT_CONTROL	0x8
 
 #define CSI_RX_NUM_IRQ				32
 
-#define IPU7_CSI_RX_SYNC_FS_VC		0x55555555
-#define IPU7_CSI_RX_SYNC_FE_VC		0xaaaaaaaa
-#define IPU7P5_CSI_RX_SYNC_FS_VC	0xffff
-#define IPU7P5_CSI_RX_SYNC_FE_VC	0xffff
+#define IPU7_CSI_RX_SYNC_FS_VC			0x55555555
+#define IPU7_CSI_RX_SYNC_FE_VC			0xaaaaaaaa
+#define IPU7P5_CSI_RX_SYNC_FS_VC		0xffff
+#define IPU7P5_CSI_RX_SYNC_FE_VC		0xffff
 
 #endif /* IPU7_ISYS_CSI2_REG_H */

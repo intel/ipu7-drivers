@@ -3,9 +3,8 @@
  * Copyright (C) 2013 - 2024 Intel Corporation
  */
 
-#include <asm/cacheflush.h>
-
 #include <linux/bug.h>
+#include <linux/cacheflush.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-map-ops.h>
 #include <linux/iova.h>

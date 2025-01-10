@@ -34,6 +34,9 @@ struct ipu7_isys_queue {
 struct ipu7_isys_buffer {
 	struct list_head head;
 	atomic_t str2mmio_flag;
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	atomic_t skipframe_flag;
+#endif
 };
 
 struct ipu7_isys_video_buffer {
@@ -65,14 +68,12 @@ struct ipu7_isys_buffer_list {
 void ipu7_isys_buffer_list_queue(struct ipu7_isys_buffer_list *bl,
 				 unsigned long op_flags,
 				 enum vb2_buffer_state state);
-void
-ipu7_isys_buffer_to_fw_frame_buff(struct ipu7_insys_buffset *set,
-				  struct ipu7_isys_stream *stream,
-				  struct ipu7_isys_buffer_list *bl);
+void ipu7_isys_buffer_to_fw_frame_buff(struct ipu7_insys_buffset *set,
+				       struct ipu7_isys_stream *stream,
+				       struct ipu7_isys_buffer_list *bl);
 
-void
-ipu7_isys_buf_calc_sequence_time(struct ipu7_isys_buffer *ib,
-				 struct ipu7_insys_resp *info);
+void ipu7_isys_buf_calc_sequence_time(struct ipu7_isys_buffer *ib,
+				      struct ipu7_insys_resp *info);
 void ipu7_isys_queue_buf_done(struct ipu7_isys_buffer *ib);
 void ipu7_isys_queue_buf_ready(struct ipu7_isys_stream *stream,
 			       struct ipu7_insys_resp *info);

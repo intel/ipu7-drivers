@@ -28,8 +28,7 @@ static int bus_pm_runtime_suspend(struct device *dev)
 	if (ret)
 		return ret;
 
-	ret = ipu7_buttress_powerdown(dev, adev->ctrl);
-	dev_dbg(dev, "buttress power down %d\n", ret);
+	ret = ipu_buttress_powerdown(dev, adev->ctrl);
 	if (!ret)
 		return 0;
 
@@ -48,8 +47,7 @@ static int bus_pm_runtime_resume(struct device *dev)
 	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
 	int ret;
 
-	ret = ipu7_buttress_powerup(dev, adev->ctrl);
-	dev_dbg(dev, "buttress power up %d\n", ret);
+	ret = ipu_buttress_powerup(dev, adev->ctrl);
 	if (ret)
 		return ret;
 
@@ -60,7 +58,7 @@ static int bus_pm_runtime_resume(struct device *dev)
 	return 0;
 
 out_err:
-	ipu7_buttress_powerdown(dev, adev->ctrl);
+	ipu_buttress_powerdown(dev, adev->ctrl);
 
 	return -EBUSY;
 }
@@ -83,7 +81,7 @@ static void ipu7_bus_release(struct device *dev)
 
 struct ipu7_bus_device *
 ipu7_bus_initialize_device(struct pci_dev *pdev, struct device *parent,
-			   void *pdata, struct ipu7_buttress_ctrl *ctrl,
+			   void *pdata, const struct ipu_buttress_ctrl *ctrl,
 			   char *name)
 {
 	struct auxiliary_device *auxdev;

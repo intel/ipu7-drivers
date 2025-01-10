@@ -3,7 +3,7 @@
  * Copyright (C) 2013 - 2024 Intel Corporation
  */
 
-#include <asm/cacheflush.h>
+#include <linux/cacheflush.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/kernel.h>
@@ -30,12 +30,11 @@ static const char send_msg_types[N_IPU_INSYS_SEND_TYPE][32] = {
 	"STREAM_CLOSE"
 };
 
-int
-ipu7_fw_isys_complex_cmd(struct ipu7_isys *isys,
-			 const unsigned int stream_handle,
-			 void *cpu_mapped_buf,
-			 dma_addr_t dma_mapped_buf,
-			 size_t size, u16 send_type)
+int ipu7_fw_isys_complex_cmd(struct ipu7_isys *isys,
+			     const unsigned int stream_handle,
+			     void *cpu_mapped_buf,
+			     dma_addr_t dma_mapped_buf,
+			     size_t size, u16 send_type)
 {
 	struct ipu7_syscom_context *ctx = isys->adev->syscom;
 	struct device *dev = &isys->adev->auxdev.dev;
@@ -66,7 +65,7 @@ ipu7_fw_isys_complex_cmd(struct ipu7_isys *isys,
 
 	ipu7_syscom_put_token(ctx, stream_handle + IPU_INSYS_INPUT_MSG_QUEUE);
 	/* now wakeup FW */
-	ipu7_buttress_wakeup_is_uc(isys->adev->isp);
+	ipu_buttress_wakeup_is_uc(isys->adev->isp);
 
 	return 0;
 }
@@ -88,6 +87,7 @@ int ipu7_fw_isys_init(struct ipu7_isys *isys)
 	dma_addr_t isys_config_dma_addr;
 	unsigned int i, num_queues;
 	u32 freq;
+	u8 major;
 	int ret;
 
 	/* Allocate and init syscom context. */
@@ -144,9 +144,11 @@ int ipu7_fw_isys_init(struct ipu7_isys *isys)
 	isys_config->logger_config.use_channels_enable_bitmask = 1;
 	isys_config->logger_config.channels_enable_bitmask =
 		LOGGER_CONFIG_CHANNEL_ENABLE_SYSCOM_BITMASK;
+	isys_config->logger_config.hw_printf_buffer_base_addr = 0U;
+	isys_config->logger_config.hw_printf_buffer_size_bytes = 0U;
 	isys_config->wdt_config.wdt_timer1_us = 0;
 	isys_config->wdt_config.wdt_timer2_us = 0;
-	ret = ipu7_buttress_get_isys_freq(adev->isp, &freq);
+	ret = ipu_buttress_get_isys_freq(adev->isp, &freq);
 	if (ret) {
 		dev_err(dev, "Failed to get ISYS frequency.\n");
 		ipu7_fw_isys_release(isys);
@@ -156,9 +158,9 @@ int ipu7_fw_isys_init(struct ipu7_isys *isys)
 	dma_sync_single_for_device(dev, isys_config_dma_addr,
 				   sizeof(struct ipu7_insys_config),
 				   DMA_TO_DEVICE);
-
+	major = is_ipu8(adev->isp->hw_ver) ? 2U : 1U;
 	ret = ipu7_boot_init_boot_config(adev, queue_configs, num_queues,
-					 freq, isys_config_dma_addr);
+					 freq, isys_config_dma_addr, major);
 	if (ret)
 		ipu7_fw_isys_release(isys);
 
@@ -323,6 +325,12 @@ void ipu7_fw_isys_dump_stream_cfg(struct device *dev,
 			cfg->output_pins[i].crop.line_top);
 		dev_dbg(dev, "\t.crop.line_bottom = %d\n",
 			cfg->output_pins[i].crop.line_bottom);
+#ifdef IPU8_INSYS_NEW_ABI
+		dev_dbg(dev, "\t.crop.column_left = %d\n",
+			cfg->output_pins[i].crop.column_left);
+		dev_dbg(dev, "\t.crop.colunm_right = %d\n",
+			cfg->output_pins[i].crop.column_right);
+#endif
 
 		dev_dbg(dev, "\t.dpcm_enable = %d\n",
 			cfg->output_pins[i].dpcm.enable);
@@ -330,6 +338,20 @@ void ipu7_fw_isys_dump_stream_cfg(struct device *dev,
 			cfg->output_pins[i].dpcm.type);
 		dev_dbg(dev, "\t.dpcm.predictor = %d\n",
 			cfg->output_pins[i].dpcm.predictor);
+#ifdef IPU8_INSYS_NEW_ABI
+		dev_dbg(dev, "\t.upipe_enable = %d\n",
+			cfg->output_pins[i].upipe_enable);
+		dev_dbg(dev, "\t.upipe_pin_cfg.opaque_pin_cfg = %d\n",
+			cfg->output_pins[i].upipe_pin_cfg.opaque_pin_cfg);
+		dev_dbg(dev, "\t.upipe_pin_cfg.plane_offset_1 = %d\n",
+			cfg->output_pins[i].upipe_pin_cfg.plane_offset_1);
+		dev_dbg(dev, "\t.upipe_pin_cfg.plane_offset_2 = %d\n",
+			cfg->output_pins[i].upipe_pin_cfg.plane_offset_2);
+		dev_dbg(dev, "\t.upipe_pin_cfg.singel_uob_fifo = %d\n",
+			cfg->output_pins[i].upipe_pin_cfg.single_uob_fifo);
+		dev_dbg(dev, "\t.upipe_pin_cfg.shared_uob_fifo = %d\n",
+			cfg->output_pins[i].upipe_pin_cfg.shared_uob_fifo);
+#endif
 	}
 	dev_dbg(dev, "---------------------------\n");
 }
@@ -348,9 +370,18 @@ void ipu7_fw_isys_dump_frame_buff_set(struct device *dev,
 
 	for (i = 0; i < outputs; i++) {
 		dev_dbg(dev, ".output_pin[%d]:\n", i);
+#ifndef IPU8_INSYS_NEW_ABI
 		dev_dbg(dev, "\t.user_token = %llx\n",
 			buf->output_pins[i].user_token);
 		dev_dbg(dev, "\t.addr = 0x%x\n", buf->output_pins[i].addr);
+#else
+		dev_dbg(dev, "\t.pin_payload.user_token = %llx\n",
+			buf->output_pins[i].pin_payload.user_token);
+		dev_dbg(dev, "\t.pin_payload.addr = 0x%x\n",
+			buf->output_pins[i].pin_payload.addr);
+		dev_dbg(dev, "\t.pin_payload.upipe_capture_cfg = 0x%x\n",
+			buf->output_pins[i].upipe_capture_cfg);
+#endif
 	}
 	dev_dbg(dev, "---------------------------\n");
 }
