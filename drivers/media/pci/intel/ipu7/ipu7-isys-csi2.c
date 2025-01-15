@@ -117,7 +117,7 @@ static void csi2_irq_en(struct ipu7_isys_csi2 *csi2, bool enable)
 		writel(0, csi2->base + offset + IRQ_CTL_MASK);
 		writel(0, csi2->base + offset + IRQ_CTL_ENABLE);
 
-		if (is_ipu7p5(isp->hw_ver)) {
+		if (!is_ipu7(isp->hw_ver)) {
 			writel(mask, csi2->base + offset + IRQ1_CTL_CLEAR);
 			writel(0, csi2->base + offset + IRQ1_CTL_MASK);
 			writel(0, csi2->base + offset + IRQ1_CTL_ENABLE);
@@ -141,7 +141,7 @@ static void csi2_irq_en(struct ipu7_isys_csi2 *csi2, bool enable)
 	writel(mask, csi2->base + offset + IRQ_CTL_ENABLE);
 
 	mask = IPU7P5_CSI_RX_SYNC_FE_IRQ_MASK;
-	if (is_ipu7p5(isp->hw_ver)) {
+	if (!is_ipu7(isp->hw_ver)) {
 		writel(mask, csi2->base + offset + IRQ1_CTL_CLEAR);
 		writel(mask, csi2->base + offset + IRQ1_CTL_MASK);
 		writel(mask, csi2->base + offset + IRQ1_CTL_ENABLE);
@@ -162,7 +162,7 @@ static void ipu7_isys_csi2_disable_stream(struct ipu7_isys_csi2 *csi2)
 	offset = IS_IO_GPREGS_BASE;
 	val = readl(isys_base + offset + CSI_PORT_CLK_GATE);
 	val &= ~(1 << port);
-	if (port == 0 && nlanes == 4 && is_ipu7p5(isys->adev->isp->hw_ver))
+	if (port == 0 && nlanes == 4 && !is_ipu7(isys->adev->isp->hw_ver))
 		val &= ~BIT(1);
 	writel(val, isys_base + offset + CSI_PORT_CLK_GATE);
 
@@ -191,7 +191,7 @@ static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2)
 	dev_dbg(dev, "port %u CLK_GATE = 0x%04x DIV_FACTOR_APB_CLK=0x%04x\n",
 		port, readl(isys_base + offset + CSI_PORT_CLK_GATE),
 		readl(isys_base + offset + CLK_DIV_FACTOR_APB_CLK));
-	if (port == 0 && nlanes == 4 && is_ipu7p5(isys->adev->isp->hw_ver)) {
+	if (port == 0 && nlanes == 4 && !is_ipu7(isys->adev->isp->hw_ver)) {
 		dev_info(dev, "CSI port %u in aggregation mode\n", port);
 		writel(0x1, isys_base + offset + CSI_PORTAB_AGGREGATION);
 	}
@@ -302,20 +302,56 @@ static int ipu7_isys_csi2_get_sel(struct v4l2_subdev *sd,
 	return ret;
 }
 
+/*
+ * Maximum stream ID is 63 for now, as we use u64 bitmask to represent a set
+ * of streams.
+ */
+#define CSI2_SUBDEV_MAX_STREAM_ID 63
+
 static int ipu7_isys_csi2_enable_streams(struct v4l2_subdev *sd,
 					 struct v4l2_subdev_state *state,
 					 u32 pad, u64 streams_mask)
 {
 	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
 	struct ipu7_isys_csi2 *csi2 = to_ipu7_isys_csi2(asd);
+	struct v4l2_subdev *r_sd;
+	struct media_pad *r_pad;
+	u32 sink_pad, sink_stream;
+	int ret, i;
 
-	if (csi2->stream_count++)
+	if (!csi2->stream_count) {
+		dev_dbg(&csi2->isys->adev->auxdev.dev,
+			"stream on CSI2-%u with %u lanes\n", csi2->port,
+			csi2->nlanes);
+		ret = ipu7_isys_csi2_enable_stream(csi2);
+		if (ret)
+			return ret;
+	}
+
+	for (i = 0; i <= CSI2_SUBDEV_MAX_STREAM_ID; i++) {
+		if (streams_mask & BIT_ULL(i))
+			break;
+	}
+
+	ret = v4l2_subdev_routing_find_opposite_end(&state->routing, pad, i,
+						    &sink_pad, &sink_stream);
+	if (ret)
+		return ret;
+
+	r_pad = media_pad_remote_pad_first(&sd->entity.pads[CSI2_PAD_SINK]);
+	r_sd = media_entity_to_v4l2_subdev(r_pad->entity);
+
+	ret = v4l2_subdev_enable_streams(r_sd, r_pad->index,
+					 BIT_ULL(sink_stream));
+	if (!ret) {
+		csi2->stream_count++;
 		return 0;
+	}
 
-	dev_dbg(&csi2->isys->adev->auxdev.dev,
-		"stream on CSI2-%u with %u lanes\n", csi2->port, csi2->nlanes);
+	if (!csi2->stream_count)
+		ipu7_isys_csi2_disable_stream(csi2);
 
-	return ipu7_isys_csi2_enable_stream(csi2);
+	return ret;
 }
 
 static int ipu7_isys_csi2_disable_streams(struct v4l2_subdev *sd,
@@ -324,6 +360,25 @@ static int ipu7_isys_csi2_disable_streams(struct v4l2_subdev *sd,
 {
 	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
 	struct ipu7_isys_csi2 *csi2 = to_ipu7_isys_csi2(asd);
+	struct v4l2_subdev *r_sd;
+	struct media_pad *r_pad;
+	u32 sink_pad, sink_stream;
+	int ret, i;
+
+	for (i = 0; i <= CSI2_SUBDEV_MAX_STREAM_ID; i++) {
+		if (streams_mask & BIT_ULL(i))
+			break;
+	}
+
+	ret = v4l2_subdev_routing_find_opposite_end(&state->routing, pad, i,
+						    &sink_pad, &sink_stream);
+	if (ret)
+		return ret;
+
+	r_pad = media_pad_remote_pad_first(&sd->entity.pads[CSI2_PAD_SINK]);
+	r_sd = media_entity_to_v4l2_subdev(r_pad->entity);
+
+	v4l2_subdev_disable_streams(r_sd, r_pad->index, BIT_ULL(sink_stream));
 
 	if (--csi2->stream_count)
 		return 0;
@@ -379,7 +434,7 @@ int ipu7_isys_csi2_init(struct ipu7_isys_csi2 *csi2,
 	csi2->base = base;
 	csi2->port = index;
 
-	if (is_ipu7p5(isys->adev->isp->hw_ver))
+	if (!is_ipu7(isys->adev->isp->hw_ver))
 		csi2->legacy_irq_mask = 0x7 << (index * 3);
 	else
 		csi2->legacy_irq_mask = 0x3 << (index * 2);
@@ -430,6 +485,7 @@ void ipu7_isys_csi2_sof_event_by_stream(struct ipu7_isys_stream *stream)
 		.type = V4L2_EVENT_FRAME_SYNC,
 	};
 
+	ev.id = stream->vc;
 	ev.u.frame_sync.frame_sequence = atomic_fetch_inc(&stream->sequence);
 	v4l2_event_queue(vdev, &ev);
 

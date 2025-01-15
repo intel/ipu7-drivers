@@ -21,7 +21,6 @@
 #include "abi/ipu7_fw_isys_abi.h"
 
 #include "ipu7.h"
-
 #include "ipu7-isys-csi2.h"
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 #include "ipu7-isys-tpg.h"
@@ -34,30 +33,30 @@ struct dentry;
 #endif
 #define IPU_ISYS_ENTITY_PREFIX		"Intel IPU7"
 
-/* FW support max 8 streams */
-#define IPU_ISYS_MAX_STREAMS		8
+/* FW support max 16 streams */
+#define IPU_ISYS_MAX_STREAMS		16
 
 #define IPU_ISYS_2600_MEM_LINE_ALIGN	64
-
-/* for TPG */
-#define IPU_ISYS_FREQ		533000000UL
 
 /*
  * Current message queue configuration. These must be big enough
  * so that they never gets full. Queues are located in system memory
  */
-#define IPU_ISYS_SIZE_RECV_QUEUE 40
-#define IPU_ISYS_SIZE_LOG_QUEUE 256
-#define IPU_ISYS_SIZE_SEND_QUEUE 40
-#define IPU_ISYS_NUM_RECV_QUEUE 1
+#define IPU_ISYS_SIZE_RECV_QUEUE	40
+#define IPU_ISYS_SIZE_LOG_QUEUE		256
+#define IPU_ISYS_SIZE_SEND_QUEUE	40
+#define IPU_ISYS_NUM_RECV_QUEUE		1
 
 #define IPU_ISYS_MIN_WIDTH		2U
 #define IPU_ISYS_MIN_HEIGHT		2U
 #define IPU_ISYS_MAX_WIDTH		8160U
 #define IPU_ISYS_MAX_HEIGHT		8190U
 
-#define FW_CALL_TIMEOUT_JIFFIES				\
+#define FW_CALL_TIMEOUT_JIFFIES		\
 	msecs_to_jiffies(IPU_LIB_CALL_TIMEOUT_MS)
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+#define FW_CALL_TIMEOUT_JIFFIES_RESET	msecs_to_jiffies(200)
+#endif
 
 struct isys_fw_log {
 	struct mutex mutex; /* protect whole struct */
@@ -90,7 +89,7 @@ struct isys_fw_log {
  #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
  * @tpg: test pattern generators
  #endif
-*/
+ */
 struct ipu7_isys {
 	struct media_device media_dev;
 	struct v4l2_device v4l2_dev;
@@ -134,6 +133,11 @@ struct ipu7_isys {
 
 	struct ipu7_insys_config *subsys_config;
 	dma_addr_t subsys_config_dma_addr;
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	struct mutex reset_mutex;
+	bool in_reset;
+	bool in_stop_streaming;
+#endif
 };
 
 struct isys_fw_msgs {
@@ -151,13 +155,28 @@ struct ipu7_isys_csi2_config {
 	unsigned int port;
 };
 
+struct ipu7_isys_subdev_i2c_info {
+	struct i2c_board_info board_info;
+	int i2c_adapter_id;
+	char i2c_adapter_bdf[32];
+};
+
+struct ipu7_isys_subdev_info {
+	struct ipu7_isys_csi2_config *csi2;
+	struct ipu7_isys_subdev_i2c_info i2c;
+};
+
+struct ipu7_isys_subdev_pdata {
+	struct ipu7_isys_subdev_info **subdevs;
+};
+
 struct sensor_async_sd {
 	struct v4l2_async_connection asc;
 	struct ipu7_isys_csi2_config csi2;
 };
 
 struct isys_fw_msgs *ipu7_get_fw_msg_buf(struct ipu7_isys_stream *stream);
-void ipu7_put_fw_msg_buf(struct ipu7_isys *isys, u64 data);
+void ipu7_put_fw_msg_buf(struct ipu7_isys *isys, uintptr_t data);
 void ipu7_cleanup_fw_msg_bufs(struct ipu7_isys *isys);
 
 extern const struct v4l2_ioctl_ops ipu7_isys_ioctl_ops;

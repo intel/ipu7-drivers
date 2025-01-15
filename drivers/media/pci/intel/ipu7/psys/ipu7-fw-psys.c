@@ -21,7 +21,9 @@
 
 #define BIT64(bit_num) (1 << (bit_num))
 
-/* Node resource ID of INSYS, required when link INSYS to PSYS */
+/*
+ * Node resource ID of INSYS, required when there is a link from INSYS to PSYS.
+ */
 #define IPU_PSYS_NODE_RSRC_ID_IS	(0xFEU)
 
 /*
@@ -91,7 +93,7 @@ int ipu7_fw_psys_init(struct ipu7_psys *psys)
 	psys->subsys_config = psys_config;
 	psys->subsys_config_dma_addr = psys_config_dma_addr;
 	memset(psys_config, 0, sizeof(struct ipu7_psys_config));
-	ret = ipu7_buttress_get_psys_freq(adev->isp, &freq);
+	ret = ipu_buttress_get_psys_freq(adev->isp, &freq);
 	if (ret) {
 		dev_err(dev, "Failed to get PSYS frequency.\n");
 		ipu7_fw_psys_release(psys);
@@ -99,7 +101,7 @@ int ipu7_fw_psys_init(struct ipu7_psys *psys)
 	}
 
 	ret = ipu7_boot_init_boot_config(adev, queue_configs, num_queues,
-					 freq, psys_config_dma_addr);
+					 freq, psys_config_dma_addr, 1U);
 	if (ret)
 		ipu7_fw_psys_release(psys);
 	return ret;
@@ -124,11 +126,11 @@ static int ipu7_fw_dev_ready(struct ipu7_psys *psys, u16 type)
 {
 	const struct ia_gofo_msg_header_ack *ack_header;
 	u8 buffer[FWPS_MSG_FW2HOST_MAX_SIZE];
-	int rval;
+	int ret;
 
-	rval = ipu7_fw_psys_event_handle(psys, buffer);
-	if (rval)
-		return rval;
+	ret = ipu7_fw_psys_event_handle(psys, buffer);
+	if (ret)
+		return ret;
 
 	ack_header = (const struct ia_gofo_msg_header_ack *)buffer;
 
@@ -160,7 +162,7 @@ static int ipu7_fw_dev_open(struct ipu7_psys *psys)
 
 	ipu7_syscom_put_token(ctx, FWPS_MSG_ABI_IN_DEV_QUEUE_ID);
 
-	ipu7_buttress_wakeup_ps_uc(psys->adev->isp);
+	ipu_buttress_wakeup_ps_uc(psys->adev->isp);
 
 	return 0;
 }
@@ -168,20 +170,20 @@ static int ipu7_fw_dev_open(struct ipu7_psys *psys)
 int ipu7_fw_psys_open(struct ipu7_psys *psys)
 {
 	u32 retry = IPU_PSYS_OPEN_CLOSE_RETRY;
-	int rval;
+	int ret;
 
-	rval = ipu7_fw_dev_open(psys);
-	if (rval) {
+	ret = ipu7_fw_dev_open(psys);
+	if (ret) {
 		dev_err(&psys->dev, "failed to open PSYS dev.\n");
-		return rval;
+		return ret;
 	}
 	psys->dev_state = IPU_MSG_DEV_STATE_OPEN_WAIT;
 
 	do {
 		usleep_range(IPU_PSYS_OPEN_CLOSE_TIMEOUT_US,
 			     IPU_PSYS_OPEN_CLOSE_TIMEOUT_US + 10);
-		rval = ipu7_fw_dev_ready(psys, IPU_MSG_TYPE_DEV_OPEN_ACK);
-		if (!rval) {
+		ret = ipu7_fw_dev_ready(psys, IPU_MSG_TYPE_DEV_OPEN_ACK);
+		if (!ret) {
 			dev_dbg(&psys->dev, "dev open done.\n");
 			psys->dev_state = IPU_MSG_DEV_STATE_OPEN;
 			return 0;
@@ -191,7 +193,7 @@ int ipu7_fw_psys_open(struct ipu7_psys *psys)
 	if (!retry)
 		dev_err(&psys->dev, "wait dev open timeout!\n");
 
-	return rval;
+	return ret;
 }
 
 static int ipu7_fw_dev_close(struct ipu7_psys *psys)
@@ -213,7 +215,7 @@ static int ipu7_fw_dev_close(struct ipu7_psys *psys)
 
 	ipu7_syscom_put_token(ctx, FWPS_MSG_ABI_IN_DEV_QUEUE_ID);
 
-	ipu7_buttress_wakeup_ps_uc(psys->adev->isp);
+	ipu_buttress_wakeup_ps_uc(psys->adev->isp);
 
 	return 0;
 }
@@ -221,10 +223,10 @@ static int ipu7_fw_dev_close(struct ipu7_psys *psys)
 void ipu7_fw_psys_close(struct ipu7_psys *psys)
 {
 	u32 retry = IPU_PSYS_OPEN_CLOSE_RETRY;
-	int rval;
+	int ret;
 
-	rval = ipu7_fw_dev_close(psys);
-	if (rval) {
+	ret = ipu7_fw_dev_close(psys);
+	if (ret) {
 		dev_err(&psys->dev, "failed to close PSYS dev.\n");
 		return;
 	}
@@ -234,8 +236,8 @@ void ipu7_fw_psys_close(struct ipu7_psys *psys)
 	do {
 		usleep_range(IPU_PSYS_OPEN_CLOSE_TIMEOUT_US,
 			     IPU_PSYS_OPEN_CLOSE_TIMEOUT_US + 10);
-		rval = ipu7_fw_dev_ready(psys, IPU_MSG_TYPE_DEV_CLOSE_ACK);
-		if (!rval) {
+		ret = ipu7_fw_dev_ready(psys, IPU_MSG_TYPE_DEV_CLOSE_ACK);
+		if (!ret) {
 			dev_dbg(&psys->dev, "dev close done.\n");
 			psys->dev_state = IPU_MSG_DEV_STATE_CLOSED;
 			return;
@@ -299,6 +301,7 @@ static bool ipu7_fw_psys_build_node(const struct graph_node *node,
 	u16 buf_size = sizeof(*msg_node);
 	bool ret = false;
 	u8 i = 0;
+	u8 max_terms = 0;
 
 	memset(msg_node, 0, sizeof(*msg_node));
 	/**
@@ -323,7 +326,7 @@ static bool ipu7_fw_psys_build_node(const struct graph_node *node,
 
 	msg_node->node_rsrc_id = node->node_rsrc_id;
 	msg_node->node_ctx_id = node->node_ctx_id;
-	msg_node->num_frags = 1; /* No fragment support */
+	msg_node->num_frags = 1;
 
 	*buf_ptr_ptr += buf_size;
 
@@ -339,7 +342,8 @@ static bool ipu7_fw_psys_build_node(const struct graph_node *node,
 	msg_node->terms_list.head_offset =
 		(u16)((uintptr_t)*buf_ptr_ptr -
 		      (uintptr_t)&msg_node->terms_list);
-	for (i = 0; i < ARRAY_SIZE(node->terminals) && i < node->num_terms; i++) {
+	max_terms = ARRAY_SIZE(node->terminals);
+	for (i = 0; i < max_terms && i < node->num_terms; i++) {
 		ret = ipu7_fw_psys_build_node_term(&node->terminals[i],
 						   buf_ptr_ptr);
 		if (ret)
@@ -434,7 +438,7 @@ int ipu7_fw_psys_graph_open(const struct ipu_psys_graph_info *graph,
 
 	ipu7_syscom_put_token(ctx, FWPS_MSG_ABI_IN_DEV_QUEUE_ID);
 
-	ipu7_buttress_wakeup_ps_uc(psys->adev->isp);
+	ipu_buttress_wakeup_ps_uc(psys->adev->isp);
 
 	return 0;
 }
@@ -459,7 +463,7 @@ int ipu7_fw_psys_graph_close(u8 graph_id, struct ipu7_psys *psys)
 
 	ipu7_syscom_put_token(ctx, FWPS_MSG_ABI_IN_DEV_QUEUE_ID);
 
-	ipu7_buttress_wakeup_ps_uc(psys->adev->isp);
+	ipu_buttress_wakeup_ps_uc(psys->adev->isp);
 
 	return 0;
 }
@@ -511,7 +515,7 @@ int ipu7_fw_psys_task_request(const struct ipu_psys_task_request *task,
 
 	msg->header.tlv_header.tlv_type = TLV_TYPE(IPU_MSG_TYPE_TASK_REQ);
 	msg->header.tlv_header.tlv_len32 = TLV_SIZE(sizeof(*msg));
-	msg->header.user_token = (u64)tq;
+	msg->header.user_token = (uintptr_t)tq;
 
 	ind->header.tlv_header.tlv_type = TLV_TYPE(IPU_MSG_TYPE_INDIRECT);
 	ind->header.tlv_header.tlv_len32 = TLV_SIZE(sizeof(*ind));
@@ -522,7 +526,7 @@ int ipu7_fw_psys_task_request(const struct ipu_psys_task_request *task,
 
 	ipu7_syscom_put_token(ctx, node_q_id);
 
-	ipu7_buttress_wakeup_ps_uc(psys->adev->isp);
+	ipu_buttress_wakeup_ps_uc(psys->adev->isp);
 
 	return 0;
 }

@@ -24,9 +24,6 @@ struct syscom_config_s {
 	u16 max_input_queues;
 };
 
-#define SYSCOM_CONFIG_ALLOC_SIZE(num_queues) \
-	((sizeof(struct syscom_config_s) + \
-	(sizeof(struct syscom_queue_params_config) * num_queues)))
 #pragma pack(pop)
 
 static inline struct syscom_queue_params_config *
@@ -52,6 +49,7 @@ struct syscom_queue_indices_s {
 	u32 read_index;
 	u32 write_index;
 };
+
 #pragma pack(pop)
 
 static inline void syscom_queue_abi_test_func(void)

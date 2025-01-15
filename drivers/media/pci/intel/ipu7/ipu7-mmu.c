@@ -4,13 +4,13 @@
  */
 
 #include <asm/barrier.h>
-#include <asm/cacheflush.h>
 
 #include <linux/align.h>
 #include <linux/atomic.h>
 #include <linux/bitops.h>
 #include <linux/bits.h>
 #include <linux/bug.h>
+#include <linux/cacheflush.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
@@ -25,6 +25,7 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/vmalloc.h>
+#include <linux/version.h>
 
 #include "ipu7.h"
 #include "ipu7-dma.h"
@@ -41,8 +42,8 @@
 #define ISP_L2PT_SHIFT		12
 #define ISP_L2PT_MASK		(~(ISP_L1PT_MASK | (~(ISP_PAGE_MASK))))
 
-#define ISP_L1PT_PTES           1024
-#define ISP_L2PT_PTES           1024
+#define ISP_L1PT_PTES		1024
+#define ISP_L2PT_PTES		1024
 
 #define ISP_PADDR_SHIFT		12
 
@@ -55,8 +56,8 @@
 
 static __maybe_unused void mmu_irq_handler(struct ipu7_mmu *mmu)
 {
-	u32 irq_cause;
 	unsigned int i;
+	u32 irq_cause;
 
 	for (i = 0; i < mmu->nr_mmus; i++) {
 		irq_cause = readl(mmu->mmu_hw[i].base + MMU_REG_IRQ_CAUSE);
@@ -292,14 +293,14 @@ static int l2_map(struct ipu7_mmu_info *mmu_info, unsigned long iova,
 		  phys_addr_t paddr, size_t size)
 {
 	struct device *dev = mmu_info->dev;
-	u32 *l2_pt, *l2_virt;
 	unsigned int l2_entries;
+	size_t mapped_size = 0;
+	u32 *l2_pt, *l2_virt;
 	unsigned int l2_idx;
 	unsigned long flags;
-	size_t mapped_size = 0;
 	dma_addr_t dma;
-	u32 l1_idx;
 	u32 l1_entry;
+	u32 l1_idx;
 	int err = 0;
 
 	spin_lock_irqsave(&mmu_info->lock, flags);
@@ -482,6 +483,10 @@ static void __mmu_at_init(struct ipu7_mmu *mmu)
 		writel(mmu_hw->collapse_en_bitmap,
 		       mmu_hw->base + MMU_REG_COLLAPSE_ENABLE_BITMAP);
 
+		dev_dbg(mmu->dev, "mmu %s info_bits was set as %x\n",
+			mmu_hw->name,
+			readl(mmu_hw->base + MMU_REG_USER_INFO_BITS));
+
 		if (mmu_hw->at_sp_arb_cfg)
 			writel(mmu_hw->at_sp_arb_cfg,
 			       mmu_hw->base + MMU_REG_AT_SP_ARB_CFG);
@@ -579,7 +584,11 @@ int ipu7_mmu_hw_init(struct ipu7_mmu *mmu)
 
 	return 0;
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+EXPORT_SYMBOL_NS_GPL(ipu7_mmu_hw_init, "INTEL_IPU7");
+#else
 EXPORT_SYMBOL_NS_GPL(ipu7_mmu_hw_init, INTEL_IPU7);
+#endif
 
 static struct ipu7_mmu_info *ipu7_mmu_alloc(struct ipu7_device *isp)
 {
@@ -648,7 +657,11 @@ void ipu7_mmu_hw_cleanup(struct ipu7_mmu *mmu)
 	mmu->ready = false;
 	spin_unlock_irqrestore(&mmu->ready_lock, flags);
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+EXPORT_SYMBOL_NS_GPL(ipu7_mmu_hw_cleanup, "INTEL_IPU7");
+#else
 EXPORT_SYMBOL_NS_GPL(ipu7_mmu_hw_cleanup, INTEL_IPU7);
+#endif
 
 static struct ipu7_dma_mapping *alloc_dma_mapping(struct ipu7_device *isp)
 {
@@ -710,7 +723,8 @@ size_t ipu7_mmu_unmap(struct ipu7_mmu_info *mmu_info, unsigned long iova,
 	 * by the hardware
 	 */
 	if (!IS_ALIGNED(iova | size, min_pagesz)) {
-		dev_err(NULL, "unaligned: iova 0x%lx size 0x%zx min_pagesz 0x%x\n",
+		dev_err(mmu_info->dev,
+			"unaligned: iova 0x%lx size 0x%zx min_pagesz 0x%x\n",
 			iova, size, min_pagesz);
 		return -EINVAL;
 	}

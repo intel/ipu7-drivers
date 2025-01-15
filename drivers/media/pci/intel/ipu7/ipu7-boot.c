@@ -11,6 +11,7 @@
 #include <linux/iopoll.h>
 #include <linux/string.h>
 #include <linux/types.h>
+#include <linux/version.h>
 
 #include "abi/ipu7_fw_boot_abi.h"
 
@@ -83,10 +84,10 @@ static u32 read_fw_boot_param(const struct ipu7_bus_device *adev,
 static int ipu7_boot_cell_reset(const struct ipu7_bus_device *adev)
 {
 	const struct ipu7_boot_context *ctx = &contexts[adev->subsys];
-	void __iomem *base = adev->isp->base;
+	const struct device *dev = &adev->auxdev.dev;
 	u32 ucx_ctrl_status = ctx->status_ctrl_reg;
 	u32 timeout = IPU_BOOT_CELL_RESET_TIMEOUT;
-	const struct device *dev = &adev->auxdev.dev;
+	void __iomem *base = adev->isp->base;
 	u32 val, val2;
 	int ret;
 
@@ -186,7 +187,7 @@ static int ipu7_boot_cell_init(const struct ipu7_bus_device *adev)
 }
 
 static void init_boot_config(struct ia_gofo_boot_config *boot_config,
-			     u32 length)
+			     u32 length, u8 major)
 {
 	/* syscom version, new syscom2 version */
 	boot_config->length = length;
@@ -197,7 +198,7 @@ static void init_boot_config(struct ia_gofo_boot_config *boot_config,
 
 	/* msg version for task interface */
 	boot_config->client_version_support.num_versions = 1U;
-	boot_config->client_version_support.versions[0].major = 1U;
+	boot_config->client_version_support.versions[0].major = major;
 	boot_config->client_version_support.versions[0].minor = 0U;
 	boot_config->client_version_support.versions[0].subminor = 0U;
 	boot_config->client_version_support.versions[0].patch = 0U;
@@ -206,23 +207,23 @@ static void init_boot_config(struct ia_gofo_boot_config *boot_config,
 int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 			       struct syscom_queue_config *qconfigs,
 			       int num_queues, u32 uc_freq,
-			       dma_addr_t subsys_config)
+			       dma_addr_t subsys_config, u8 major)
 {
+	u32 total_queue_size = 0, total_queue_size_aligned = 0;
 	struct ipu7_syscom_context *syscom = adev->syscom;
-	struct syscom_config_s *syscfg;
 	struct ia_gofo_boot_config *boot_config;
 	struct syscom_queue_params_config *cfgs;
+	struct device *dev = &adev->auxdev.dev;
+	struct syscom_config_s *syscfg;
 	dma_addr_t queue_mem_dma_ptr;
 	void *queue_mem_ptr;
-	u32 total_queue_size = 0, total_queue_size_aligned = 0;
-	struct device *dev = &adev->auxdev.dev;
 	unsigned int i;
 
-	dev_dbg(dev,
-		"init boot config. queues_nr: %d freq: %u sys_conf: 0x%llx\n",
+	dev_dbg(dev, "boot config queues_nr: %d freq: %u sys_conf: 0x%llx\n",
 		num_queues, uc_freq, subsys_config);
 	/* Allocate boot config. */
-	adev->boot_config_size = FW_BOOT_CONFIG_ALLOC_SIZE(num_queues);
+	adev->boot_config_size =
+		sizeof(*cfgs) * num_queues + sizeof(*boot_config);
 	adev->boot_config = dma_alloc_attrs(dev, adev->boot_config_size,
 					    &adev->boot_config_dma_addr,
 					    GFP_KERNEL, 0);
@@ -230,17 +231,18 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 		dev_err(dev, "Failed to allocate boot config.\n");
 		return -ENOMEM;
 	}
-	dev_dbg(dev, "boot config dma addr: 0x%llx\n",
-		adev->boot_config_dma_addr);
+
 	boot_config = adev->boot_config;
 	memset(boot_config, 0, sizeof(struct ia_gofo_boot_config));
-	init_boot_config(boot_config, adev->boot_config_size);
+	init_boot_config(boot_config, adev->boot_config_size, major);
 	boot_config->subsys_config = subsys_config;
 
-	boot_config->uc_tile_frequency_mhz = uc_freq;
-	boot_config->syscom_context_config[0].max_output_queues =
+	boot_config->uc_tile_frequency = uc_freq;
+	boot_config->uc_tile_frequency_units =
+		IA_GOFO_FW_BOOT_UC_FREQUENCY_UNITS_MHZ;
+	boot_config->syscom_context_config.max_output_queues =
 		syscom->num_output_queues;
-	boot_config->syscom_context_config[0].max_input_queues =
+	boot_config->syscom_context_config.max_input_queues =
 		syscom->num_input_queues;
 
 	dma_sync_single_for_device(dev, adev->boot_config_dma_addr,
@@ -254,13 +256,7 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 		queue_size = ALIGN(queue_size, IA_GOFO_CL_SIZE);
 		total_queue_size_aligned += queue_size;
 		qconfigs[i].queue_size = queue_size;
-		dev_dbg(dev,
-			"queue_configs[%d]: capacity = %d, token_size = %d\n",
-			i, qconfigs[i].max_capacity,
-			qconfigs[i].token_size_in_bytes);
 	}
-	dev_dbg(dev, "isys syscom queue size %d, aligned size %d\n",
-		total_queue_size, total_queue_size_aligned);
 
 	/* Allocate queue memory */
 	syscom->queue_mem = dma_alloc_attrs(dev, total_queue_size_aligned,
@@ -270,11 +266,9 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 		dev_err(dev, "Failed to allocate queue memory.\n");
 		return -ENOMEM;
 	}
-	dev_dbg(dev, "syscom queue memory. dma_addr: 0x%llx size: %d\n",
-		syscom->queue_mem_dma_addr, total_queue_size_aligned);
 	syscom->queue_mem_size = total_queue_size_aligned;
 
-	syscfg = &boot_config->syscom_context_config[0];
+	syscfg = &boot_config->syscom_context_config;
 	cfgs = ipu7_syscom_get_queue_config(syscfg);
 	queue_mem_ptr = syscom->queue_mem;
 	queue_mem_dma_ptr = syscom->queue_mem_dma_addr;
@@ -292,7 +286,11 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 
 	return 0;
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+EXPORT_SYMBOL_NS_GPL(ipu7_boot_init_boot_config, "INTEL_IPU7");
+#else
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_init_boot_config, INTEL_IPU7);
+#endif
 
 void ipu7_boot_release_boot_config(struct ipu7_bus_device *adev)
 {
@@ -315,14 +313,18 @@ void ipu7_boot_release_boot_config(struct ipu7_bus_device *adev)
 		adev->boot_config_dma_addr = 0;
 	}
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+EXPORT_SYMBOL_NS_GPL(ipu7_boot_release_boot_config, "INTEL_IPU7");
+#else
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_release_boot_config, INTEL_IPU7);
+#endif
 
 int ipu7_boot_start_fw(const struct ipu7_bus_device *adev)
 {
 	const struct device *dev = &adev->auxdev.dev;
-	u32 boot_state, last_boot_state;
 	u32 timeout = IPU_FW_START_STOP_TIMEOUT;
 	void __iomem *base = adev->isp->base;
+	u32 boot_state, last_boot_state;
 	u32 indices_addr, msg_ver, id;
 	struct ia_gofo_version_s ver;
 	int ret;
@@ -389,13 +391,17 @@ int ipu7_boot_start_fw(const struct ipu7_bus_device *adev)
 
 	return 0;
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+EXPORT_SYMBOL_NS_GPL(ipu7_boot_start_fw, "INTEL_IPU7");
+#else
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_start_fw, INTEL_IPU7);
+#endif
 
 int ipu7_boot_stop_fw(const struct ipu7_bus_device *adev)
 {
 	const struct device *dev = &adev->auxdev.dev;
-	u32 boot_state;
 	u32 timeout = IPU_FW_START_STOP_TIMEOUT;
+	u32 boot_state;
 
 	boot_state = read_fw_boot_param(adev, IA_GOFO_FW_BOOT_STATE_ID);
 	if (BOOT_STATE_IS_CRITICAL(boot_state) ||
@@ -432,10 +438,18 @@ int ipu7_boot_stop_fw(const struct ipu7_bus_device *adev)
 
 	return 0;
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+EXPORT_SYMBOL_NS_GPL(ipu7_boot_stop_fw, "INTEL_IPU7");
+#else
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_stop_fw, INTEL_IPU7);
+#endif
 
 u32 ipu7_boot_get_boot_state(const struct ipu7_bus_device *adev)
 {
 	return read_fw_boot_param(adev, IA_GOFO_FW_BOOT_STATE_ID);
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+EXPORT_SYMBOL_NS_GPL(ipu7_boot_get_boot_state, "INTEL_IPU7");
+#else
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_get_boot_state, INTEL_IPU7);
+#endif

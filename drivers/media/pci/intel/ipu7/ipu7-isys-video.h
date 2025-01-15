@@ -17,8 +17,8 @@
 
 #include "ipu7-isys-queue.h"
 
-#define IPU_INSYS_OUTPUT_PINS 11
-#define IPU_ISYS_MAX_PARALLEL_SOF 2
+#define IPU_INSYS_OUTPUT_PINS		11
+#define IPU_ISYS_MAX_PARALLEL_SOF	2
 
 struct file;
 struct ipu7_isys;
@@ -53,6 +53,9 @@ struct ipu7_isys_stream {
 	struct mutex mutex;
 	struct media_entity *source_entity;
 	atomic_t sequence;
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	int last_sequence;
+#endif
 	atomic_t buf_id;
 	unsigned int seq_index;
 	struct sequence_info seq[IPU_ISYS_MAX_PARALLEL_SOF];
@@ -87,9 +90,13 @@ struct ipu7_isys_video {
 	struct ipu7_isys_csi2 *csi2;
 	struct ipu7_isys_stream *stream;
 	unsigned int streaming;
-	u32 source_stream;
 	u8 vc;
 	u8 dt;
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	unsigned int reset;
+	unsigned int skipframe;
+	unsigned int start_streaming;
+#endif
 };
 
 #define ipu7_isys_queue_to_video(__aq)			\

@@ -21,26 +21,39 @@ struct firmware;
 
 #define IPU7_FIRMWARE_NAME		"intel/ipu/ipu7_fw.bin"
 #define IPU7P5_FIRMWARE_NAME		"intel/ipu/ipu7ptl_fw.bin"
+#define IPU8_FIRMWARE_NAME		"intel/ipu/ipu8_fw.bin"
 
 #define IPU7_ISYS_NUM_STREAMS		12
 
-#define IPU7_PCI_ID	0x645d
-#define IPU7P5_PCI_ID	0xb05d
+#define IPU7_PCI_ID			0x645d
+#define IPU7P5_PCI_ID			0xb05d
+#define IPU8_PCI_ID			0xd719
 
-#define FW_LOG_BUF_SIZE  (2 * 1024 * 1024)
+#define FW_LOG_BUF_SIZE			(2 * 1024 * 1024)
 
-enum ipu7_version {
-	IPU7_VER_INVALID = 0,
-	IPU7_VER_7 = 1,
-	IPU7_VER_7P5 = 2,
+enum ipu_version {
+	IPU_VER_INVALID = 0,
+	IPU_VER_7 = 1,
+	IPU_VER_7P5 = 2,
+	IPU_VER_8 = 3,
 };
 
 static inline bool is_ipu7p5(u8 hw_ver)
 {
-	return hw_ver == IPU7_VER_7P5;
+	return hw_ver == IPU_VER_7P5;
 }
 
-#define IPU_UNIFIED_OFFSET			0
+static inline bool is_ipu7(u8 hw_ver)
+{
+	return hw_ver == IPU_VER_7;
+}
+
+static inline bool is_ipu8(u8 hw_ver)
+{
+	return hw_ver == IPU_VER_8;
+}
+
+#define IPU_UNIFIED_OFFSET		0
 
 /*
  * ISYS DMA can overshoot. For higher resolutions over allocation is one line
@@ -48,16 +61,6 @@ static inline bool is_ipu7p5(u8 hw_ver)
  * different versions / generations thus provide it via platform data.
  */
 #define IPU_ISYS_OVERALLOC_MIN		1024
-
-/*
- * Physical pages in GDA is 128, page size is 2K for IPU6, 1K for others.
- */
-#define IPU_DEVICE_GDA_NR_PAGES		128
-
-/*
- * Virtualization factor to calculate the available virtual pages.
- */
-#define IPU_DEVICE_GDA_VIRT_FACTOR	32
 
 #define IPU_FW_CODE_REGION_SIZE		0x1000000 /* 16MB */
 #define IPU_FW_CODE_REGION_START	0x4000000 /* 64MB */
@@ -69,7 +72,7 @@ struct ipu7_device {
 	struct list_head devices;
 	struct ipu7_bus_device *isys;
 	struct ipu7_bus_device *psys;
-	struct ipu7_buttress buttress;
+	struct ipu_buttress buttress;
 
 	const struct firmware *cpd_fw;
 	const char *cpd_fw_name;
@@ -87,29 +90,31 @@ struct ipu7_device {
 	bool ipu7_bus_ready_to_probe;
 };
 
-#define IPU_DMA_MASK	39
+#define IPU_DMA_MASK			39
 #define IPU_LIB_CALL_TIMEOUT_MS		2000
-#define IPU_PSYS_CMD_TIMEOUT_MS	2000
-#define IPU_PSYS_OPEN_CLOSE_TIMEOUT_US	   50
-#define IPU_PSYS_OPEN_CLOSE_RETRY (10000 / IPU_PSYS_OPEN_CLOSE_TIMEOUT_US)
+#define IPU_PSYS_CMD_TIMEOUT_MS		2000
+#define IPU_PSYS_OPEN_CLOSE_TIMEOUT_US	50
+#define IPU_PSYS_OPEN_CLOSE_RETRY	(10000 / IPU_PSYS_OPEN_CLOSE_TIMEOUT_US)
 
 #define IPU_ISYS_NAME "isys"
 #define IPU_PSYS_NAME "psys"
 
-#define IPU_MMU_ADDR_BITS			32
+#define IPU_MMU_ADDR_BITS		32
 /* FW is accessible within the first 2 GiB only in non-secure mode. */
-#define IPU_MMU_ADDR_BITS_NON_SECURE		31
+#define IPU_MMU_ADDR_BITS_NON_SECURE	31
 
-#define IPU7_IS_MMU_NUM				4
-#define IPU7_PS_MMU_NUM				4
-#define IPU7P5_IS_MMU_NUM			4
-#define IPU7P5_PS_MMU_NUM			4
-#define IPU_MMU_MAX_NUM				4 /* max(IS, PS) */
-#define IPU_MMU_MAX_TLB_L1_STREAMS		40
-#define IPU_MMU_MAX_TLB_L2_STREAMS		40
-#define IPU_ZLX_MAX_NUM				32
-#define IPU_ZLX_POOL_NUM			8
-#define IPU_UAO_PLANE_MAX_NUM			64
+#define IPU7_IS_MMU_NUM			4
+#define IPU7_PS_MMU_NUM			4
+#define IPU7P5_IS_MMU_NUM		4
+#define IPU7P5_PS_MMU_NUM		4
+#define IPU8_IS_MMU_NUM			5
+#define IPU8_PS_MMU_NUM			4
+#define IPU_MMU_MAX_NUM			5 /* max(IS, PS) */
+#define IPU_MMU_MAX_TLB_L1_STREAMS	40
+#define IPU_MMU_MAX_TLB_L2_STREAMS	40
+#define IPU_ZLX_MAX_NUM			32
+#define IPU_ZLX_POOL_NUM		8
+#define IPU_UAO_PLANE_MAX_NUM		64
 
 /*
  * To maximize the IOSF utlization, IPU need to send requests in bursts.
@@ -134,12 +139,10 @@ struct ipu7_device {
 #define IPU_BTRS_ARB_MODE_TYPE_STALL	1
 
 /* Currently chosen arbitration mechanism for VC0 */
-#define IPU_BTRS_ARB_STALL_MODE_VC0		\
-	IPU_BTRS_ARB_MODE_TYPE_REARB
+#define IPU_BTRS_ARB_STALL_MODE_VC0	IPU_BTRS_ARB_MODE_TYPE_REARB
 
 /* Currently chosen arbitration mechanism for VC1 */
-#define IPU_BTRS_ARB_STALL_MODE_VC1		\
-	IPU_BTRS_ARB_MODE_TYPE_REARB
+#define IPU_BTRS_ARB_STALL_MODE_VC1	IPU_BTRS_ARB_MODE_TYPE_REARB
 
 struct ipu7_isys_subdev_pdata;
 
@@ -149,13 +152,12 @@ struct ipu7_isys_subdev_pdata;
 #define IPU_MMUV2_MAX_L2_BLOCKS		2
 /* Max L1 blocks per stream */
 #define IPU_MMUV2_MAX_L1_BLOCKS		16
-#define IPU_MMUV2_TRASH_RANGE		(IPU_MMUV2_L2_RANGE *		\
+#define IPU_MMUV2_TRASH_RANGE		(IPU_MMUV2_L2_RANGE *	\
 					 IPU_MMUV2_MAX_L2_BLOCKS)
 /* Entries per L1 block */
-#define MMUV2_ENTRIES_PER_L1_BLOCK		16
-#define MMUV2_TRASH_L1_BLOCK_OFFSET		(MMUV2_ENTRIES_PER_L1_BLOCK * \
-						 PAGE_SIZE)
-#define MMUV2_TRASH_L2_BLOCK_OFFSET		IPU_MMUV2_L2_RANGE
+#define MMUV2_ENTRIES_PER_L1_BLOCK	16
+#define MMUV2_TRASH_L1_BLOCK_OFFSET	(MMUV2_ENTRIES_PER_L1_BLOCK * PAGE_SIZE)
+#define MMUV2_TRASH_L2_BLOCK_OFFSET	IPU_MMUV2_L2_RANGE
 
 struct ipu7_mmu_hw {
 	char name[32];
@@ -203,6 +205,7 @@ struct ipu7_isys_csi2_pdata {
 struct ipu7_isys_internal_csi2_pdata {
 	u32 nports;
 	u32 *offsets;
+	u32 gpreg;
 };
 
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
@@ -223,7 +226,7 @@ struct ipu7_hw_variants {
 	u32 spc_offset;	/* SPC offset from psys base */
 };
 
-struct ipu7_isys_internal_pdata {
+struct ipu_isys_internal_pdata {
 	struct ipu7_isys_internal_csi2_pdata csi2;
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 	struct ipu7_isys_internal_tpg_pdata tpg;
@@ -235,22 +238,21 @@ struct ipu7_isys_internal_pdata {
 
 struct ipu7_isys_pdata {
 	void __iomem *base;
-	const struct ipu7_isys_internal_pdata *ipdata;
+	const struct ipu_isys_internal_pdata *ipdata;
 };
 
-struct ipu7_psys_internal_pdata {
+struct ipu_psys_internal_pdata {
 	struct ipu7_hw_variants hw_variant;
 };
 
 struct ipu7_psys_pdata {
 	void __iomem *base;
-	const struct ipu7_psys_internal_pdata *ipdata;
+	const struct ipu_psys_internal_pdata *ipdata;
 };
 
 int request_cpd_fw(const struct firmware **firmware_p, const char *name,
 		   struct device *device);
-extern enum ipu7_version ipu7_ver;
-void ipu7_internal_pdata_init(struct ipu7_isys_internal_pdata *isys_ipdata,
-			      struct ipu7_psys_internal_pdata *psys_ipdata);
+void ipu_internal_pdata_init(struct ipu_isys_internal_pdata *isys_ipdata,
+			     struct ipu_psys_internal_pdata *psys_ipdata);
 void ipu7_dump_fw_error_log(const struct ipu7_bus_device *adev);
 #endif /* IPU7_H */

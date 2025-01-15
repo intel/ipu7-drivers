@@ -23,12 +23,12 @@
  * Each event from FW will be first queued into a
  * event queue, define the queue depth here
  */
-#define MAX_TASK_EVENT_QUEUE_SIZE		3
+#define TASK_EVENT_QUEUE_SIZE			3U
 /**
  * Each task queue from user will be first queued into
  * a task queue, define the queue depth here
  */
-#define MAX_TASK_REQUEST_QUEUE_SIZE		8
+#define TASK_REQUEST_QUEUE_SIZE			8U
 
 #define INVALID_STREAM_ID			0xFF
 /**
@@ -41,10 +41,12 @@
 struct ipu_psys_task_queue {
 	struct ipu_psys_term_buffers task_buffers[MAX_GRAPH_TERMINALS];
 	dma_addr_t ipu7_addr[MAX_GRAPH_TERMINALS];
-	u32 index; /* index of the task request buffer */
-	u8 available; /* if the task queue can be used or not */
+
 	struct ipu7_msg_task *msg_task;
 	dma_addr_t task_dma_addr;
+
+	struct list_head list;
+
 	/* task state of each task input, represent ipu7_msg_task_state */
 	enum ipu7_msg_task_state task_state;
 };
@@ -67,7 +69,8 @@ struct ipu_psys_task_ack {
 	u8 graph_id; /* graph id of the task request */
 	u8 node_ctx_id; /* logical node id */
 	u8 frame_id; /* frame id of the original task request */
-	u8 available; /* if the task ack slot can be used */
+
+	struct list_head list;
 
 	u32 err_code; /* error indication to user */
 };
@@ -83,17 +86,15 @@ struct ipu7_psys_stream {
 
 	u8 graph_id; /* graph_id on this stream */
 
-	/* Serialize task done queue */
+	/* Handle events from FW */
 	struct mutex event_mutex;
-	/* current event queue write index, incremental */
-	u32 event_write_index;
-	/* current event queue read index, incremental */
-	u32 event_read_index;
-	struct ipu_psys_task_ack event_queue[MAX_TASK_EVENT_QUEUE_SIZE];
+	struct list_head event_list; /* Reserved event list */
+	struct list_head ack_list; /* Received ack from FW */
 
 	/* Serialize task queue */
 	struct mutex task_mutex;
-	struct ipu_psys_task_queue task_queue[MAX_TASK_REQUEST_QUEUE_SIZE];
+	struct list_head tq_list; /* Reserved task queue list */
+	struct list_head tq_running_list; /* Running task sent to FW */
 
 	u8 num_nodes; /* Number of enabled nodes */
 	struct graph_node nodes[MAX_GRAPH_NODES];
@@ -130,8 +131,6 @@ struct ipu7_psys {
 
 	struct psys_fw_log *fw_log;
 
-	int power_gating;
-
 	/* available graph_id range is 0 ~ IPU_PSYS_NUM_STREAMS - 1 */
 	u8 graph_id[IPU_PSYS_NUM_STREAMS];
 
@@ -155,7 +154,7 @@ struct ipu7_psys_fh {
 struct ipu7_dma_buf_attach {
 	struct device *dev;
 	u64 len;
-	void *userptr;
+	uintptr_t *userptr;
 	struct sg_table *sgt;
 	struct page **pages;
 	size_t npages;
@@ -163,7 +162,7 @@ struct ipu7_dma_buf_attach {
 
 struct ipu7_psys_kbuffer {
 	u64 len;
-	void *userptr;
+	uintptr_t *userptr;
 	u32 flags;
 	int fd;
 	void *kaddr;
