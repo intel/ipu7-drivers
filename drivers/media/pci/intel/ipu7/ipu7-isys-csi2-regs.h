@@ -55,10 +55,10 @@
 
 /* IS IO regs base */
 #define IS_PHY_NUM				(4)
-#define IS_IO_BASE				(0x280000)
+#define IS_IO_BASE				(0x280000U)
 
 /* dwc csi cdphy registers */
-#define IS_IO_CDPHY_BASE(i)			(IS_IO_BASE + 0x10000 * (i))
+#define IS_IO_CDPHY_BASE(i)			(IS_IO_BASE + 0x10000U * (i))
 #define PPI_STARTUP_RW_COMMON_DPHY_0			0x1800
 #define PPI_STARTUP_RW_COMMON_DPHY_1			0x1802
 #define PPI_STARTUP_RW_COMMON_DPHY_2			0x1804
@@ -846,8 +846,8 @@
 #define CORE_DIG_CLANE_2_RW_HS_TX_13			0xaa1a
 
 /* dwc csi host controller registers */
-#define IS_IO_CSI2_HOST_BASE(i)			(IS_IO_BASE + 0x40000 + \
-						 0x2000 * (i))
+#define IS_IO_CSI2_HOST_BASE(i)			(IS_IO_BASE + 0x40000U + \
+						 0x2000U * (i))
 #define VERSION					0x0
 #define N_LANES					0x4
 #define CSI2_RESETN				0x8
@@ -907,8 +907,8 @@
 #define SCRAMBLING_SEED4			0x310
 #define SCRAMBLING				0x300
 
-#define IS_IO_CSI2_ADPL_PORT_BASE(i)		(IS_IO_BASE + 0x40800 + \
-						 0x2000 * (i))
+#define IS_IO_CSI2_ADPL_PORT_BASE(i)		(IS_IO_BASE + 0x40800U + \
+						 0x2000U * (i))
 #define CSI2_ADPL_INPUT_MODE			0x0
 #define CSI2_ADPL_CSI_RX_ERR_IRQ_CLEAR_EN	0x4
 #define CSI2_ADPL_CSI_RX_ERR_IRQ_CLEAR_ADDR	0x8
@@ -924,11 +924,11 @@
 #define CSI2_ADPL_IRQ_CTL_FE_ENABLE		0xd0
 
 /* software control the legacy csi irq */
-#define IS_IO_CSI2_ERR_LEGACY_IRQ_CTL_BASE(i)	(IS_IO_BASE + 0x40c00 + \
-						 0x2000 * (i))
-#define IS_IO_CSI2_SYNC_LEGACY_IRQ_CTL_BASE(i)	(IS_IO_BASE + 0x40d00 + \
-						 0x2000 * (i))
-#define IS_IO_CSI2_LEGACY_IRQ_CTRL_BASE		(IS_IO_BASE + 0x49000)
+#define IS_IO_CSI2_ERR_LEGACY_IRQ_CTL_BASE(i)	(IS_IO_BASE + 0x40c00U + \
+						 0x2000U * (i))
+#define IS_IO_CSI2_SYNC_LEGACY_IRQ_CTL_BASE(i)	(IS_IO_BASE + 0x40d00U + \
+						 0x2000U * (i))
+#define IS_IO_CSI2_LEGACY_IRQ_CTRL_BASE		(IS_IO_BASE + 0x49000U)
 #define IS_IO_CSI2_IRQ_CTRL_BASE		(IS_IO_BASE + 0x4e100)
 
 #define IRQ_CTL_EDGE				0x0
@@ -943,7 +943,7 @@
 #define IRQ1_CTL_ENABLE				0x20
 
 /* software to set the clock gate to use the port or mgc */
-#define IS_IO_GPREGS_BASE			(IS_IO_BASE + 0x49200)
+#define IS_IO_GPREGS_BASE			(IS_IO_BASE + 0x49200U)
 #define SRST_PORT_ARB				0x0
 #define SRST_MGC				0x4
 #define SRST_WIDTH_CONV				0x8
@@ -1152,8 +1152,8 @@
 #define IPU7_CSI_RX_SYNC_IRQ_MASK		0 /* 0xffffffff */
 #define IPU7P5_CSI_RX_SYNC_FE_IRQ_MASK		0 /* 0xffffffff */
 
-#define CSI_RX_NUM_ERRORS_IN_IRQ		12
-#define CSI_RX_NUM_SYNC_IN_IRQ			32
+#define CSI_RX_NUM_ERRORS_IN_IRQ		12U
+#define CSI_RX_NUM_SYNC_IN_IRQ			32U
 
 enum CSI_FE_MODE_TYPE {
 	CSI_FE_DPHY_MODE = 0,
@@ -1187,11 +1187,11 @@ enum CSI2HOST_SELECTION {
 #define CSI_REG_PORT_GPREG_CSI2_SLV_REG_SRST	0x4
 #define CSI_REG_PORT_GPREG_CSI2_PORT_CONTROL	0x8
 
-#define CSI_RX_NUM_IRQ				32
+#define CSI_RX_NUM_IRQ				32U
 
-#define IPU7_CSI_RX_SYNC_FS_VC			0x55555555
-#define IPU7_CSI_RX_SYNC_FE_VC			0xaaaaaaaa
-#define IPU7P5_CSI_RX_SYNC_FS_VC		0xffff
-#define IPU7P5_CSI_RX_SYNC_FE_VC		0xffff
+#define IPU7_CSI_RX_SYNC_FS_VC			0x55555555U
+#define IPU7_CSI_RX_SYNC_FE_VC			0xaaaaaaaaU
+#define IPU7P5_CSI_RX_SYNC_FS_VC		0xffffU
+#define IPU7P5_CSI_RX_SYNC_FE_VC		0xffffU
 
 #endif /* IPU7_ISYS_CSI2_REG_H */

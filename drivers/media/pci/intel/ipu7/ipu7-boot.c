@@ -19,6 +19,7 @@
 #include "ipu7-boot.h"
 #include "ipu7-bus.h"
 #include "ipu7-buttress-regs.h"
+#include "ipu7-dma.h"
 #include "ipu7-platform-regs.h"
 #include "ipu7-syscom.h"
 
@@ -56,9 +57,9 @@ static const struct ipu7_boot_context contexts[IPU_SUBSYS_NUM] = {
 static u32 get_fw_boot_reg_addr(const struct ipu7_bus_device *adev,
 				enum ia_gofo_buttress_reg_id reg)
 {
-	u32 base = (adev->subsys == IPU_IS) ? 0 : IA_GOFO_FW_BOOT_ID_MAX;
+	u32 base = (adev->subsys == IPU_IS) ? 0U : (u32)IA_GOFO_FW_BOOT_ID_MAX;
 
-	return BUTTRESS_FW_BOOT_PARAMS_ENTRY(base + reg);
+	return BUTTRESS_FW_BOOT_PARAMS_ENTRY(base + (u32)reg);
 }
 
 static void write_fw_boot_param(const struct ipu7_bus_device *adev,
@@ -105,7 +106,7 @@ static int ipu7_boot_cell_reset(const struct ipu7_bus_device *adev)
 	writel(val, base + ucx_ctrl_status);
 
 	ret = readl_poll_timeout(base + ucx_ctrl_status, val2,
-				 (val2 & 0x3) == (val & 0x3), 100, timeout);
+				 (val2 & 0x3U) == (val & 0x3U), 100, timeout);
 	if (ret) {
 		dev_err(dev, "cell enter reset timeout. status: 0x%x\n", val2);
 		return -ETIMEDOUT;
@@ -122,7 +123,7 @@ static int ipu7_boot_cell_reset(const struct ipu7_bus_device *adev)
 	writel(val, base + ucx_ctrl_status);
 
 	ret = readl_poll_timeout(base + ucx_ctrl_status, val2,
-				 (val2 & 0x3) == (val & 0x3), 100, timeout);
+				 (val2 & 0x3U) == (val & 0x3U), 100, timeout);
 	if (ret) {
 		dev_err(dev, "cell exit reset timeout. status: 0x%x\n", val2);
 		return -ETIMEDOUT;
@@ -224,9 +225,9 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 	/* Allocate boot config. */
 	adev->boot_config_size =
 		sizeof(*cfgs) * num_queues + sizeof(*boot_config);
-	adev->boot_config = dma_alloc_attrs(dev, adev->boot_config_size,
-					    &adev->boot_config_dma_addr,
-					    GFP_KERNEL, 0);
+	adev->boot_config = ipu7_dma_alloc(adev, adev->boot_config_size,
+					   &adev->boot_config_dma_addr,
+					   GFP_KERNEL, 0);
 	if (!adev->boot_config) {
 		dev_err(dev, "Failed to allocate boot config.\n");
 		return -ENOMEM;
@@ -245,8 +246,8 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 	boot_config->syscom_context_config.max_input_queues =
 		syscom->num_input_queues;
 
-	dma_sync_single_for_device(dev, adev->boot_config_dma_addr,
-				   adev->boot_config_size, DMA_TO_DEVICE);
+	ipu7_dma_sync_single(adev, adev->boot_config_dma_addr,
+			     adev->boot_config_size);
 
 	for (i = 0; i < num_queues; i++) {
 		u32 queue_size = qconfigs[i].max_capacity *
@@ -259,9 +260,9 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 	}
 
 	/* Allocate queue memory */
-	syscom->queue_mem = dma_alloc_attrs(dev, total_queue_size_aligned,
-					    &syscom->queue_mem_dma_addr,
-					    GFP_KERNEL, 0);
+	syscom->queue_mem = ipu7_dma_alloc(adev, total_queue_size_aligned,
+					   &syscom->queue_mem_dma_addr,
+					   GFP_KERNEL, 0);
 	if (!syscom->queue_mem) {
 		dev_err(dev, "Failed to allocate queue memory.\n");
 		return -ENOMEM;
@@ -281,43 +282,34 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 		queue_mem_ptr += qconfigs[i].queue_size;
 	}
 
-	dma_sync_single_for_device(dev, syscom->queue_mem_dma_addr,
-				   total_queue_size_aligned, DMA_TO_DEVICE);
+	ipu7_dma_sync_single(adev, syscom->queue_mem_dma_addr,
+			     total_queue_size_aligned);
 
 	return 0;
 }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_init_boot_config, "INTEL_IPU7");
-#else
-EXPORT_SYMBOL_NS_GPL(ipu7_boot_init_boot_config, INTEL_IPU7);
-#endif
 
 void ipu7_boot_release_boot_config(struct ipu7_bus_device *adev)
 {
 	struct ipu7_syscom_context *syscom = adev->syscom;
-	struct device *dev = &adev->auxdev.dev;
 
 	if (syscom->queue_mem) {
-		dma_free_attrs(dev, syscom->queue_mem_size,
-			       syscom->queue_mem,
-			       syscom->queue_mem_dma_addr, 0);
+		ipu7_dma_free(adev, syscom->queue_mem_size,
+			      syscom->queue_mem,
+			      syscom->queue_mem_dma_addr, 0);
 		syscom->queue_mem = NULL;
 		syscom->queue_mem_dma_addr = 0;
 	}
 
 	if (adev->boot_config) {
-		dma_free_attrs(dev, adev->boot_config_size,
-			       adev->boot_config,
-			       adev->boot_config_dma_addr, 0);
+		ipu7_dma_free(adev, adev->boot_config_size,
+			      adev->boot_config,
+			      adev->boot_config_dma_addr, 0);
 		adev->boot_config = NULL;
 		adev->boot_config_dma_addr = 0;
 	}
 }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_release_boot_config, "INTEL_IPU7");
-#else
-EXPORT_SYMBOL_NS_GPL(ipu7_boot_release_boot_config, INTEL_IPU7);
-#endif
 
 int ipu7_boot_start_fw(const struct ipu7_bus_device *adev)
 {
@@ -391,11 +383,7 @@ int ipu7_boot_start_fw(const struct ipu7_bus_device *adev)
 
 	return 0;
 }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_start_fw, "INTEL_IPU7");
-#else
-EXPORT_SYMBOL_NS_GPL(ipu7_boot_start_fw, INTEL_IPU7);
-#endif
 
 int ipu7_boot_stop_fw(const struct ipu7_bus_device *adev)
 {
@@ -438,18 +426,10 @@ int ipu7_boot_stop_fw(const struct ipu7_bus_device *adev)
 
 	return 0;
 }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_stop_fw, "INTEL_IPU7");
-#else
-EXPORT_SYMBOL_NS_GPL(ipu7_boot_stop_fw, INTEL_IPU7);
-#endif
 
 u32 ipu7_boot_get_boot_state(const struct ipu7_bus_device *adev)
 {
 	return read_fw_boot_param(adev, IA_GOFO_FW_BOOT_STATE_ID);
 }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 EXPORT_SYMBOL_NS_GPL(ipu7_boot_get_boot_state, "INTEL_IPU7");
-#else
-EXPORT_SYMBOL_NS_GPL(ipu7_boot_get_boot_state, INTEL_IPU7);
-#endif

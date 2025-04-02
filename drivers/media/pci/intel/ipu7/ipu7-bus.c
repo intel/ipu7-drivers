@@ -82,7 +82,7 @@ static void ipu7_bus_release(struct device *dev)
 struct ipu7_bus_device *
 ipu7_bus_initialize_device(struct pci_dev *pdev, struct device *parent,
 			   void *pdata, const struct ipu_buttress_ctrl *ctrl,
-			   char *name)
+			   const char *name)
 {
 	struct auxiliary_device *auxdev;
 	struct ipu7_bus_device *adev;
@@ -92,11 +92,6 @@ ipu7_bus_initialize_device(struct pci_dev *pdev, struct device *parent,
 	adev = kzalloc(sizeof(*adev), GFP_KERNEL);
 	if (!adev)
 		return ERR_PTR(-ENOMEM);
-
-	if (isp->secure_mode)
-		adev->dma_mask = DMA_BIT_MASK(IPU_MMU_ADDR_BITS);
-	else
-		adev->dma_mask = DMA_BIT_MASK(IPU_MMU_ADDR_BITS_NON_SECURE);
 
 	adev->isp = isp;
 	adev->ctrl = ctrl;
@@ -108,10 +103,6 @@ ipu7_bus_initialize_device(struct pci_dev *pdev, struct device *parent,
 
 	auxdev->dev.parent = parent;
 	auxdev->dev.release = ipu7_bus_release;
-	auxdev->dev.dma_ops = &ipu7_dma_ops;
-	auxdev->dev.dma_mask = &adev->dma_mask;
-	auxdev->dev.dma_parms = pdev->dev.dma_parms;
-	auxdev->dev.coherent_dma_mask = adev->dma_mask;
 
 	ret = auxiliary_device_init(auxdev);
 	if (ret < 0) {

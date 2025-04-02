@@ -16,12 +16,13 @@
 #include "ipu7.h"
 #include "ipu7-boot.h"
 #include "ipu7-bus.h"
+#include "ipu7-dma.h"
 #include "ipu7-fw-isys.h"
 #include "ipu7-isys.h"
 #include "ipu7-platform-regs.h"
 #include "ipu7-syscom.h"
 
-static const char send_msg_types[N_IPU_INSYS_SEND_TYPE][32] = {
+static const char * const send_msg_types[N_IPU_INSYS_SEND_TYPE] = {
 	"STREAM_OPEN",
 	"STREAM_START_AND_CAPTURE",
 	"STREAM_CAPTURE",
@@ -130,8 +131,8 @@ int ipu7_fw_isys_init(struct ipu7_isys *isys)
 	}
 
 	/* Allocate ISYS subsys config. */
-	isys_config = dma_alloc_attrs(dev, sizeof(struct ipu7_insys_config),
-				      &isys_config_dma_addr, GFP_KERNEL, 0);
+	isys_config = ipu7_dma_alloc(adev, sizeof(struct ipu7_insys_config),
+				     &isys_config_dma_addr, GFP_KERNEL, 0);
 	if (!isys_config) {
 		dev_err(dev, "Failed to allocate isys subsys config.\n");
 		ipu7_fw_isys_release(isys);
@@ -155,9 +156,9 @@ int ipu7_fw_isys_init(struct ipu7_isys *isys)
 		return ret;
 	}
 
-	dma_sync_single_for_device(dev, isys_config_dma_addr,
-				   sizeof(struct ipu7_insys_config),
-				   DMA_TO_DEVICE);
+	ipu7_dma_sync_single(adev, isys_config_dma_addr,
+			     sizeof(struct ipu7_insys_config));
+
 	major = is_ipu8(adev->isp->hw_ver) ? 2U : 1U;
 	ret = ipu7_boot_init_boot_config(adev, queue_configs, num_queues,
 					 freq, isys_config_dma_addr, major);
@@ -173,10 +174,10 @@ void ipu7_fw_isys_release(struct ipu7_isys *isys)
 
 	ipu7_boot_release_boot_config(adev);
 	if (isys->subsys_config) {
-		dma_free_attrs(&adev->auxdev.dev,
-			       sizeof(struct ipu7_insys_config),
-			       isys->subsys_config,
-			       isys->subsys_config_dma_addr, 0);
+		ipu7_dma_free(adev,
+			      sizeof(struct ipu7_insys_config),
+			      isys->subsys_config,
+			      isys->subsys_config_dma_addr, 0);
 		isys->subsys_config = NULL;
 		isys->subsys_config_dma_addr = 0;
 	}
@@ -194,8 +195,9 @@ int ipu7_fw_isys_close(struct ipu7_isys *isys)
 
 struct ipu7_insys_resp *ipu7_fw_isys_get_resp(struct ipu7_isys *isys)
 {
-	return ipu7_syscom_get_token(isys->adev->syscom,
-				     IPU_INSYS_OUTPUT_MSG_QUEUE);
+	return (struct ipu7_insys_resp *)
+		ipu7_syscom_get_token(isys->adev->syscom,
+				      IPU_INSYS_OUTPUT_MSG_QUEUE);
 }
 
 void ipu7_fw_isys_put_resp(struct ipu7_isys *isys)

@@ -42,6 +42,11 @@ Three ways are available:
 	CONFIG_VIDEO_OV13B10=m
 	CONFIG_VIDEO_OV02C10=m
 	CONFIG_VIDEO_OV05C10=m
+        ```
+        Add below configure for HDMI2MIPI device LT6911GXD
+        ```conf
+        CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET=y
+        CONFIG_VIDEO_LT6911GXD=m
 	```
 5. Build you kernel
 

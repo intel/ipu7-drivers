@@ -22,21 +22,21 @@
 #define MAX_MANIFEST_SIZE	(SZ_4K * sizeof(u32))
 
 #define CPD_MANIFEST_IDX	0
-#define CPD_BINARY_START_IDX	1
+#define CPD_BINARY_START_IDX	1U
 #define CPD_METADATA_START_IDX	2
-#define CPD_BINARY_NUM		2 /* ISYS + PSYS */
+#define CPD_BINARY_NUM		2U /* ISYS + PSYS */
 /*
  * Entries include:
  * 1 manifest entry.
  * 1 metadata entry for each sub system(ISYS and PSYS).
  * 1 binary entry for each sub system(ISYS and PSYS).
  */
-#define CPD_ENTRY_NUM		(CPD_BINARY_NUM * 2 + 1)
+#define CPD_ENTRY_NUM		(CPD_BINARY_NUM * 2U + 1U)
 
 #define CPD_METADATA_ATTR	0xa
 #define CPD_METADATA_IPL	0x1c
 #define ONLINE_METADATA_SIZE	128
-#define ONLINE_METADATA_LINES	6
+#define ONLINE_METADATA_LINES	6U
 
 static inline struct ipu7_cpd_ent *ipu7_cpd_get_entry(const void *cpd, int idx)
 {
@@ -91,12 +91,13 @@ static int ipu7_cpd_validate_cpd(struct ipu7_device *isp,
 
 	/* Ensure that all entries are within moduledata */
 	ent = (struct ipu7_cpd_ent *)(((u8 *)cpd_hdr) + len);
-	for (i = 0; i < cpd_hdr->ent_cnt; i++, ent++) {
+	for (i = 0; i < cpd_hdr->ent_cnt; i++) {
 		if (data_size < ent->offset ||
 		    data_size - ent->offset < ent->len) {
 			dev_err(dev, "Invalid CPD entry %d\n", i);
 			return -EINVAL;
 		}
+		ent++;
 	}
 
 	return 0;
@@ -183,7 +184,7 @@ int ipu7_cpd_validate_cpd_file(struct ipu7_device *isp, const void *cpd_file,
 		unsigned int l;
 
 		ent = ipu7_cpd_get_entry(cpd_file,
-					 CPD_BINARY_START_IDX + i * 2);
+					 CPD_BINARY_START_IDX + i * 2U);
 		memcpy(info, (u8 *)cpd_file + ent->offset + ent->len -
 		       ONLINE_METADATA_SIZE, ONLINE_METADATA_SIZE);
 		for (l = 0; l < ONLINE_METADATA_LINES; l++) {
@@ -205,11 +206,7 @@ int ipu7_cpd_validate_cpd_file(struct ipu7_device *isp, const void *cpd_file,
 
 	return 0;
 }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 EXPORT_SYMBOL_NS_GPL(ipu7_cpd_validate_cpd_file, "INTEL_IPU7");
-#else
-EXPORT_SYMBOL_NS_GPL(ipu7_cpd_validate_cpd_file, INTEL_IPU7);
-#endif
 
 int ipu7_cpd_copy_binary(const void *cpd, const char *name,
 			 void *code_region, u32 *entry)
@@ -218,7 +215,7 @@ int ipu7_cpd_copy_binary(const void *cpd, const char *name,
 
 	for (i = 0; i < CPD_BINARY_NUM; i++) {
 		const struct ipu7_cpd_ent *binary =
-			ipu7_cpd_get_entry(cpd, CPD_BINARY_START_IDX + i * 2);
+			ipu7_cpd_get_entry(cpd, CPD_BINARY_START_IDX + i * 2U);
 		const struct ipu7_cpd_metadata *metadata =
 			ipu7_cpd_get_metadata(cpd, i);
 
@@ -232,8 +229,4 @@ int ipu7_cpd_copy_binary(const void *cpd, const char *name,
 
 	return -ENOENT;
 }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 EXPORT_SYMBOL_NS_GPL(ipu7_cpd_copy_binary, "INTEL_IPU7");
-#else
-EXPORT_SYMBOL_NS_GPL(ipu7_cpd_copy_binary, INTEL_IPU7);
-#endif

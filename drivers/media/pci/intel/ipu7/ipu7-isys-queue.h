@@ -42,6 +42,7 @@ struct ipu7_isys_buffer {
 struct ipu7_isys_video_buffer {
 	struct vb2_v4l2_buffer vb_v4l2;
 	struct ipu7_isys_buffer ib;
+	dma_addr_t dma_addr;
 };
 
 #define IPU_ISYS_BUFFER_LIST_FL_INCOMING	BIT(0)
@@ -59,7 +60,7 @@ struct ipu7_isys_buffer_list {
 #define ipu7_isys_to_isys_video_buffer(__ib)			\
 	container_of(__ib, struct ipu7_isys_video_buffer, ib)
 
-#define vb2_buffer_to_ipu_isys_video_buffer(__vvb)			\
+#define vb2_buffer_to_ipu7_isys_video_buffer(__vvb)			\
 	container_of(__vvb, struct ipu7_isys_video_buffer, vb_v4l2)
 
 #define ipu7_isys_buffer_to_vb2_buffer(__ib)				\

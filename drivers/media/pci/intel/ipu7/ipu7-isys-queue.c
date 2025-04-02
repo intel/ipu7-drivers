@@ -11,18 +11,20 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/version.h>
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 #include <linux/delay.h>
 #endif
 
 #include <media/media-entity.h>
 #include <media/v4l2-subdev.h>
-#include <media/videobuf2-dma-contig.h>
+#include <media/videobuf2-dma-sg.h>
 #include <media/videobuf2-v4l2.h>
 
 #include "abi/ipu7_fw_isys_abi.h"
 
 #include "ipu7-bus.h"
+#include "ipu7-dma.h"
 #include "ipu7-fw-isys.h"
 #include "ipu7-isys.h"
 #include "ipu7-isys-video.h"
@@ -32,9 +34,39 @@
 
 #define IPU_MAX_FRAME_COUNTER	(U8_MAX + 1)
 
-static int queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
-		       unsigned int *num_planes, unsigned int sizes[],
-		       struct device *alloc_devs[])
+static int ipu7_isys_buf_init(struct vb2_buffer *vb)
+{
+	struct ipu7_isys *isys = vb2_get_drv_priv(vb->vb2_queue);
+	struct sg_table *sg = vb2_dma_sg_plane_desc(vb, 0);
+	struct vb2_v4l2_buffer *vvb = to_vb2_v4l2_buffer(vb);
+	struct ipu7_isys_video_buffer *ivb =
+		vb2_buffer_to_ipu7_isys_video_buffer(vvb);
+	int ret;
+
+	ret = ipu7_dma_map_sgtable(isys->adev, sg, DMA_TO_DEVICE, 0);
+	if (ret)
+		return ret;
+
+	ivb->dma_addr = sg_dma_address(sg->sgl);
+
+	return 0;
+}
+
+static void ipu7_isys_buf_cleanup(struct vb2_buffer *vb)
+{
+	struct ipu7_isys *isys = vb2_get_drv_priv(vb->vb2_queue);
+	struct sg_table *sg = vb2_dma_sg_plane_desc(vb, 0);
+	struct vb2_v4l2_buffer *vvb = to_vb2_v4l2_buffer(vb);
+	struct ipu7_isys_video_buffer *ivb =
+		vb2_buffer_to_ipu7_isys_video_buffer(vvb);
+
+	ivb->dma_addr = 0;
+	ipu7_dma_unmap_sgtable(isys->adev, sg, DMA_TO_DEVICE, 0);
+}
+
+static int ipu7_isys_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
+				 unsigned int *num_planes, unsigned int sizes[],
+				 struct device *alloc_devs[])
 {
 	struct ipu7_isys_queue *aq = vb2_queue_to_isys_queue(q);
 	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
@@ -227,14 +259,15 @@ static void ipu7_isys_buf_to_fw_frame_buf_pin(struct vb2_buffer *vb,
 					      struct ipu7_insys_buffset *set)
 {
 	struct ipu7_isys_queue *aq = vb2_queue_to_isys_queue(vb->vb2_queue);
+	struct vb2_v4l2_buffer *vvb = to_vb2_v4l2_buffer(vb);
+	struct ipu7_isys_video_buffer *ivb =
+		vb2_buffer_to_ipu7_isys_video_buffer(vvb);
 
 #ifndef IPU8_INSYS_NEW_ABI
-	set->output_pins[aq->fw_output].addr =
-		vb2_dma_contig_plane_dma_addr(vb, 0);
+	set->output_pins[aq->fw_output].addr = ivb->dma_addr;
 	set->output_pins[aq->fw_output].user_token = (uintptr_t)set;
 #else
-	set->output_pins[aq->fw_output].pin_payload.addr =
-		vb2_dma_contig_plane_dma_addr(vb, 0);
+	set->output_pins[aq->fw_output].pin_payload.addr = ivb->dma_addr;
 	set->output_pins[aq->fw_output].pin_payload.user_token = (uintptr_t)set;
 	set->output_pins[aq->fw_output].upipe_capture_cfg = 0;
 #endif
@@ -339,7 +372,7 @@ static void buf_queue(struct vb2_buffer *vb)
 	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
 	struct vb2_v4l2_buffer *vvb = to_vb2_v4l2_buffer(vb);
 	struct ipu7_isys_video_buffer *ivb =
-		vb2_buffer_to_ipu_isys_video_buffer(vvb);
+		vb2_buffer_to_ipu7_isys_video_buffer(vvb);
 	struct media_pipeline *media_pipe =
 		media_entity_pipeline(&av->vdev.entity);
 	struct device *dev = &av->isys->adev->auxdev.dev;
@@ -354,7 +387,7 @@ static void buf_queue(struct vb2_buffer *vb)
 
 	dev_dbg(dev, "queue buffer %u for %s\n", vb->index, av->vdev.name);
 
-	dma = vb2_dma_contig_plane_dma_addr(vb, 0);
+	dma = ivb->dma_addr;
 	dev_dbg(dev, "iova: iova %pad\n", &dma);
 
 	spin_lock_irqsave(&aq->lock, flags);
@@ -626,6 +659,7 @@ out_return_buffers:
 }
 
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+#if 0
 static void reset_stop_streaming(struct ipu7_isys_video *av)
 {
 	struct ipu7_isys_queue *aq = &av->aq;
@@ -751,13 +785,7 @@ static int ipu_isys_reset(struct ipu7_isys_video *self_av,
 
 	ipu7_cleanup_fw_msg_bufs(isys);
 
-	if (isys->fwcom) {
-		dev_err(dev, "Clearing old context\n");
-		ipu7_fw_isys_cleanup(isys);
-	}
-
-	ret = ipu7_fw_isys_init(av->isys,
-			  isys->pdata->ipdata->num_parallel_streams);
+	ret = ipu7_fw_isys_init(av->isys);
 	if (ret < 0)
 		dev_err(dev, "ipu fw isys init failed\n");
 
@@ -782,7 +810,7 @@ end_of_reset:
 
 	return 0;
 }
-
+#endif
 #endif
 static void stop_streaming(struct vb2_queue *q)
 {
@@ -850,9 +878,9 @@ static void stop_streaming(struct vb2_queue *q)
 	mutex_unlock(&av->isys->reset_mutex);
 
 	if (av->isys->need_reset) {
-		if (!stream->nr_streaming)
-			ipu_isys_reset(av, stream);
-		else
+		// if (!stream->nr_streaming)
+			// ipu_isys_reset(av, stream);
+		// else
 			av->isys->need_reset = 0;
 	}
 
@@ -977,10 +1005,14 @@ void ipu7_isys_queue_buf_ready(struct ipu7_isys_stream *stream,
 	}
 
 	list_for_each_entry_reverse(ib, &aq->active, head) {
+		struct ipu7_isys_video_buffer *ivb;
+		struct vb2_v4l2_buffer *vvb;
 		dma_addr_t addr;
 
 		vb = ipu7_isys_buffer_to_vb2_buffer(ib);
-		addr = vb2_dma_contig_plane_dma_addr(vb, 0);
+		vvb = to_vb2_v4l2_buffer(vb);
+		ivb = vb2_buffer_to_ipu7_isys_video_buffer(vvb);
+		addr = ivb->dma_addr;
 
 		if (info->pin.addr != addr) {
 			if (first)
@@ -1012,10 +1044,10 @@ void ipu7_isys_queue_buf_ready(struct ipu7_isys_stream *stream,
 }
 
 static const struct vb2_ops ipu7_isys_queue_ops = {
-	.queue_setup = queue_setup,
-	.wait_prepare = vb2_ops_wait_prepare,
-	.wait_finish = vb2_ops_wait_finish,
+	.queue_setup = ipu7_isys_queue_setup,
+	.buf_init = ipu7_isys_buf_init,
 	.buf_prepare = ipu7_isys_buf_prepare,
+	.buf_cleanup = ipu7_isys_buf_cleanup,
 	.start_streaming = start_streaming,
 	.stop_streaming = stop_streaming,
 	.buf_queue = buf_queue,
@@ -1025,15 +1057,16 @@ int ipu7_isys_queue_init(struct ipu7_isys_queue *aq)
 {
 	struct ipu7_isys *isys = ipu7_isys_queue_to_video(aq)->isys;
 	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
+	struct ipu7_bus_device *adev = isys->adev;
 	int ret;
 
 	if (!aq->vbq.io_modes)
 		aq->vbq.io_modes = VB2_MMAP | VB2_DMABUF;
 
-	aq->vbq.drv_priv = aq;
+	aq->vbq.drv_priv = isys;
 	aq->vbq.ops = &ipu7_isys_queue_ops;
 	aq->vbq.lock = &av->mutex;
-	aq->vbq.mem_ops = &vb2_dma_contig_memops;
+	aq->vbq.mem_ops = &vb2_dma_sg_memops;
 	aq->vbq.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	aq->vbq.min_queued_buffers = 1;
 	aq->vbq.timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
@@ -1042,8 +1075,8 @@ int ipu7_isys_queue_init(struct ipu7_isys_queue *aq)
 	if (ret)
 		return ret;
 
-	aq->dev = &isys->adev->auxdev.dev;
-	aq->vbq.dev = &isys->adev->auxdev.dev;
+	aq->dev = &adev->auxdev.dev;
+	aq->vbq.dev = &adev->isp->pdev->dev;
 	spin_lock_init(&aq->lock);
 	INIT_LIST_HEAD(&aq->active);
 	INIT_LIST_HEAD(&aq->incoming);

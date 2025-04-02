@@ -109,14 +109,11 @@ struct ipu7_psys_stream {
 
 struct task_struct;
 struct ipu7_psys {
-	struct ipu_psys_capability caps;
 	struct cdev cdev;
 	struct device dev;
 
 	struct mutex mutex;	/* Psys various */
 	int ready; /* psys fw status */
-	bool icache_prefetch_sp;
-	bool icache_prefetch_isp;
 	spinlock_t ready_lock;	/* protect psys firmware state */
 
 	struct list_head fhs;

@@ -41,10 +41,12 @@
 #include "ipu7-bus.h"
 #include "ipu7-buttress-regs.h"
 #include "ipu7-cpd.h"
+#include "ipu7-dma.h"
 #include "ipu7-fw-isys.h"
 #include "ipu7-mmu.h"
 #include "ipu7-isys.h"
 #include "ipu7-isys-csi2.h"
+#include "ipu7-isys-csi-phy.h"
 #include "ipu7-isys-csi2-regs.h"
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 #include "ipu7-isys-tpg.h"
@@ -86,6 +88,11 @@ isys_complete_ext_device_registration(struct ipu7_isys *isys,
 	}
 
 	isys->csi2[csi2->port].nlanes = csi2->nlanes;
+	if (csi2->bus_type == V4L2_MBUS_CSI2_DPHY)
+		isys->csi2[csi2->port].phy_mode = PHY_MODE_DPHY;
+	else
+		isys->csi2[csi2->port].phy_mode = PHY_MODE_CPHY;
+
 	return 0;
 
 skip_unregister_subdev:
@@ -193,7 +200,7 @@ static int isys_notifier_init(struct ipu7_isys *isys)
 
 	for (i = 0; i < csi2->nports; i++) {
 		struct v4l2_fwnode_endpoint vep = {
-			.bus_type = V4L2_MBUS_CSI2_DPHY
+			.bus_type = V4L2_MBUS_UNKNOWN
 		};
 		struct sensor_async_sd *s_asd;
 		struct fwnode_handle *ep;
@@ -207,6 +214,14 @@ static int isys_notifier_init(struct ipu7_isys *isys)
 		if (ret)
 			goto err_parse;
 
+		if (vep.bus_type != V4L2_MBUS_CSI2_DPHY &&
+		    vep.bus_type != V4L2_MBUS_CSI2_CPHY) {
+			ret = -EINVAL;
+			dev_err(dev, "unsupported bus type %d!\n",
+				vep.bus_type);
+			goto err_parse;
+		}
+
 		s_asd = v4l2_async_nf_add_fwnode_remote(&isys->notifier, ep,
 							struct
 							sensor_async_sd);
@@ -217,6 +232,7 @@ static int isys_notifier_init(struct ipu7_isys *isys)
 
 		s_asd->csi2.port = vep.base.port;
 		s_asd->csi2.nlanes = vep.bus.mipi_csi2.num_data_lanes;
+		s_asd->csi2.bus_type = vep.bus_type;
 
 		fwnode_handle_put(ep);
 
@@ -287,7 +303,7 @@ static int isys_register_video_devices(struct ipu7_isys *isys)
 	return 0;
 
 fail:
-	i = i + 1;
+	i = i + 1U;
 	while (i--) {
 		while (j--)
 			ipu7_isys_video_cleanup(&isys->csi2[i].av[j]);
@@ -678,23 +694,22 @@ static void isys_remove(struct auxiliary_device *auxdev)
 {
 	struct ipu7_isys *isys = dev_get_drvdata(&auxdev->dev);
 	struct isys_fw_msgs *fwmsg, *safe;
-#ifdef CONFIG_DEBUG_FS
 	struct ipu7_bus_device *adev = auxdev_to_adev(auxdev);
 
+#ifdef CONFIG_DEBUG_FS
 	if (adev->isp->ipu7_dir)
 		debugfs_remove_recursive(isys->debugfsdir);
 #endif
-
 	for (int i = 0; i < IPU_ISYS_MAX_STREAMS; i++)
 		mutex_destroy(&isys->streams[i].mutex);
 
 	list_for_each_entry_safe(fwmsg, safe, &isys->framebuflist, head)
-		dma_free_attrs(&auxdev->dev, sizeof(struct isys_fw_msgs),
-			       fwmsg, fwmsg->dma_addr, 0);
+		ipu7_dma_free(adev, sizeof(struct isys_fw_msgs),
+			      fwmsg, fwmsg->dma_addr, 0);
 
 	list_for_each_entry_safe(fwmsg, safe, &isys->framebuflist_fw, head)
-		dma_free_attrs(&auxdev->dev, sizeof(struct isys_fw_msgs),
-			       fwmsg, fwmsg->dma_addr, 0);
+		ipu7_dma_free(adev, sizeof(struct isys_fw_msgs),
+			      fwmsg, fwmsg->dma_addr, 0);
 
 	isys_notifier_cleanup(isys);
 	isys_unregister_devices(isys);
@@ -782,15 +797,15 @@ err:
 
 static int alloc_fw_msg_bufs(struct ipu7_isys *isys, int amount)
 {
-	struct device *dev = &isys->adev->auxdev.dev;
+	struct ipu7_bus_device *adev = isys->adev;
 	struct isys_fw_msgs *addr;
 	dma_addr_t dma_addr;
 	unsigned long flags;
 	unsigned int i;
 
 	for (i = 0; i < amount; i++) {
-		addr = dma_alloc_attrs(dev, sizeof(struct isys_fw_msgs),
-				       &dma_addr, GFP_KERNEL, 0);
+		addr = ipu7_dma_alloc(adev, sizeof(struct isys_fw_msgs),
+				      &dma_addr, GFP_KERNEL, 0);
 		if (!addr)
 			break;
 		addr->dma_addr = dma_addr;
@@ -809,8 +824,8 @@ static int alloc_fw_msg_bufs(struct ipu7_isys *isys, int amount)
 					struct isys_fw_msgs, head);
 		list_del(&addr->head);
 		spin_unlock_irqrestore(&isys->listlock, flags);
-		dma_free_attrs(dev, sizeof(struct isys_fw_msgs),
-			       addr, addr->dma_addr, 0);
+		ipu7_dma_free(adev, sizeof(struct isys_fw_msgs),
+			      addr, addr->dma_addr, 0);
 		spin_lock_irqsave(&isys->listlock, flags);
 	}
 	spin_unlock_irqrestore(&isys->listlock, flags);
@@ -949,11 +964,11 @@ static int isys_probe(struct auxiliary_device *auxdev,
 
 	ret = ipu7_fw_isys_init(isys);
 	if (ret)
-		goto out_cleanup;
+		goto out_cleanup_mmu;
 
 	ret = isys_register_devices(isys);
 	if (ret)
-		goto out_cleanup;
+		goto out_cleanup_fw;
 
 	ret = isys_fw_log_init(isys);
 	if (ret)
@@ -969,8 +984,10 @@ static int isys_probe(struct auxiliary_device *auxdev,
 
 out_cleanup:
 	isys_unregister_devices(isys);
+out_cleanup_fw:
 	ipu7_fw_isys_release(isys);
 
+out_cleanup_mmu:
 	for (unsigned int i = 0; i < IPU_ISYS_MAX_STREAMS; i++)
 		mutex_destroy(&isys->streams[i].mutex);
 
@@ -1014,7 +1031,7 @@ static void ipu7_isys_register_errors(struct ipu7_isys_csi2 *csi2)
 {
 	u32 offset = IS_IO_CSI2_ERR_LEGACY_IRQ_CTL_BASE(csi2->port);
 	u32 status = readl(csi2->base + offset + IRQ_CTL_STATUS);
-	int mask = IPU7_CSI_RX_ERROR_IRQ_MASK;
+	u32 mask = IPU7_CSI_RX_ERROR_IRQ_MASK;
 
 	if (!status)
 		return;
@@ -1208,13 +1225,13 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 
 #endif
 		stream->seq[stream->seq_index].sequence =
-			atomic_read(&stream->sequence) - 1;
+			atomic_read(&stream->sequence) - 1U;
 		stream->seq[stream->seq_index].timestamp = ts;
 		dev_dbg(dev,
 			"SOF: stream %u frame %u (index %u), ts 0x%16.16llx\n",
 			resp->stream_id, resp->frame_id,
 			stream->seq[stream->seq_index].sequence, ts);
-		stream->seq_index = (stream->seq_index + 1)
+		stream->seq_index = (stream->seq_index + 1U)
 			% IPU_ISYS_MAX_PARALLEL_SOF;
 		break;
 	case IPU_INSYS_RESP_TYPE_FRAME_EOF:
@@ -1272,22 +1289,22 @@ static void ipu7_isys_csi2_isr(struct ipu7_isys_csi2 *csi2)
 			continue;
 
 		if (!is_ipu7(isp->hw_ver)) {
-			if (sync & IPU7P5_CSI_RX_SYNC_FS_VC & (1 << vc))
+			if (sync & IPU7P5_CSI_RX_SYNC_FS_VC & (1U << vc))
 				ipu7_isys_csi2_sof_event_by_stream(s);
 
-			if (fe & IPU7P5_CSI_RX_SYNC_FE_VC & (1 << vc))
+			if (fe & IPU7P5_CSI_RX_SYNC_FE_VC & (1U << vc))
 				ipu7_isys_csi2_eof_event_by_stream(s);
 		} else {
-			if (sync & IPU7_CSI_RX_SYNC_FS_VC & (1 << (vc * 2)))
+			if (sync & IPU7_CSI_RX_SYNC_FS_VC & (1U << (vc * 2)))
 				ipu7_isys_csi2_sof_event_by_stream(s);
 
-			if (sync & IPU7_CSI_RX_SYNC_FE_VC & (2 << (vc * 2)))
+			if (sync & IPU7_CSI_RX_SYNC_FE_VC & (2U << (vc * 2)))
 				ipu7_isys_csi2_eof_event_by_stream(s);
 		}
 	}
 }
 
-irqreturn_t isys_isr(struct ipu7_bus_device *adev)
+static irqreturn_t isys_isr(struct ipu7_bus_device *adev)
 {
 	struct ipu7_isys *isys = ipu7_bus_get_drvdata(adev);
 	u32 status_csi, status_sw, csi_offset, sw_offset;
@@ -1380,10 +1397,5 @@ MODULE_AUTHOR("Tianshu Qiu <tian.shu.qiu@intel.com>");
 MODULE_AUTHOR("Qingwu Zhang <qingwu.zhang@intel.com>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Intel ipu7 input system driver");
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 MODULE_IMPORT_NS("INTEL_IPU7");
 MODULE_IMPORT_NS("INTEL_IPU_BRIDGE");
-#else
-MODULE_IMPORT_NS(INTEL_IPU7);
-MODULE_IMPORT_NS(INTEL_IPU_BRIDGE);
-#endif

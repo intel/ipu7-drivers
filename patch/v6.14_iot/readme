@@ -1,0 +1,14 @@
+1. checkout iot kernel 6.14
+2. copy patches to kernel source tree and apply them
+    a. enable IPU snoop for cache consistency issue
+       git am 0001-media-pci-set-snoop-1-to-fix-cache-line-issue.patch
+
+    b. enable lt6911gxd
+       git am 0002-media-i2c-enable-lt6911gxd-in-ipu-bridge.patch
+       git am 0003-media-i2c-add-support-for-lt6911gxd.patch
+       git am 0004-INT3472-Support-LT6911GXD.patch
+       git am 0006-media-ipu-bridge-change-LT6911GXD-ACPI-ID-to-INTC112.patch
+       git am 0007-platform-x86-fix-ipu7-allyes-build-error-for-int3472.patch
+
+    c. enable CPHY
+       git am 0005-ipu-bridge-add-CPHY-support.patch
