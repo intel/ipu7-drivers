@@ -9,6 +9,7 @@
        git am 0004-INT3472-Support-LT6911GXD.patch
        git am 0006-media-ipu-bridge-change-LT6911GXD-ACPI-ID-to-INTC112.patch
        git am 0007-platform-x86-fix-ipu7-allyes-build-error-for-int3472.patch
+       git am 0008-media-i2c-add-driver-for-LT6911GXD.patch
 
     c. enable CPHY
        git am 0005-ipu-bridge-add-CPHY-support.patch
