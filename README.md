@@ -43,6 +43,11 @@ Three ways are available:
 	CONFIG_VIDEO_OV02C10=m
 	CONFIG_VIDEO_OV05C10=m
 	```
+	```conf
+	To enable HDMI2MIPI camera:
+	CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET=y
+	CONFIG_VIDEO_LT6911GXD=m
+	```
 5. Build you kernel
 
 ### 2. Out-of-tree build

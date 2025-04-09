@@ -3,6 +3,7 @@
  * Copyright (C) 2013 - 2024 Intel Corporation
  */
 
+#include <asm/cpu_device_id.h>
 #include <linux/bitfield.h>
 #include <linux/bits.h>
 #include <linux/completion.h>
@@ -28,13 +29,13 @@
 
 #define BOOTLOADER_STATUS_OFFSET	BUTTRESS_REG_FW_BOOT_PARAMS7
 
-#define BOOTLOADER_MAGIC_KEY		0xb00710ad
+#define BOOTLOADER_MAGIC_KEY		0xb00710adU
 
 #define ENTRY	BUTTRESS_IU2CSECSR_IPC_PEER_COMP_ACTIONS_RST_PHASE1
 #define EXIT	BUTTRESS_IU2CSECSR_IPC_PEER_COMP_ACTIONS_RST_PHASE2
 #define QUERY	BUTTRESS_IU2CSECSR_IPC_PEER_QUERIED_IP_COMP_ACTIONS_RST_PHASE
 
-#define BUTTRESS_TSC_SYNC_RESET_TRIAL_MAX	10
+#define BUTTRESS_TSC_SYNC_RESET_TRIAL_MAX	10U
 
 #define BUTTRESS_POWER_TIMEOUT_US		(200 * USEC_PER_MSEC)
 
@@ -47,7 +48,7 @@
 #define BUTTRESS_IPC_VALIDITY_TIMEOUT_US	(1 * USEC_PER_SEC)
 #define BUTTRESS_TSC_SYNC_TIMEOUT_US		(5 * USEC_PER_MSEC)
 
-#define BUTTRESS_IPC_RESET_RETRY		2000
+#define BUTTRESS_IPC_RESET_RETRY		2000U
 #define BUTTRESS_CSE_IPC_RESET_RETRY		4
 #define BUTTRESS_IPC_CMD_SEND_RETRY		1
 
@@ -447,11 +448,12 @@ static int isys_d2d_power(struct device *dev, bool on)
 {
 	struct ipu7_device *isp = to_ipu7_bus_device(dev)->isp;
 	int ret = 0;
+	u32 target = on ? BUTTRESS_D2D_PWR_ACK : 0U;
 	u32 val;
 
 	dev_dbg(dev, "power %s isys d2d.\n", on ? "UP" : "DOWN");
 	val = readl(isp->base + BUTTRESS_REG_D2D_CTL);
-	if (!(val & BUTTRESS_D2D_PWR_ACK) ^ on) {
+	if ((val & BUTTRESS_D2D_PWR_ACK) == target) {
 		dev_info(dev, "d2d already in %s state.\n",
 			 on ? "UP" : "DOWN");
 		return 0;
@@ -460,7 +462,7 @@ static int isys_d2d_power(struct device *dev, bool on)
 	val = on ? val | BUTTRESS_D2D_PWR_EN : val & (~BUTTRESS_D2D_PWR_EN);
 	writel(val, isp->base + BUTTRESS_REG_D2D_CTL);
 	ret = readl_poll_timeout(isp->base + BUTTRESS_REG_D2D_CTL,
-				 val, (!(val & BUTTRESS_D2D_PWR_ACK) ^ on),
+				 val, (val & BUTTRESS_D2D_PWR_ACK) == target,
 				 100, BUTTRESS_POWER_TIMEOUT_US);
 	if (ret)
 		dev_err(dev, "power %s d2d timeout. status: 0x%x\n",
@@ -570,7 +572,7 @@ static int ipu7_buttress_powerdown(struct device *dev,
 	mutex_lock(&isp->buttress.power_mutex);
 
 	exp_sts = ctrl->pwr_sts_off << ctrl->pwr_sts_shift;
-	val = 0x8 << ctrl->ratio_shift;
+	val = 0x8U << ctrl->ratio_shift;
 
 	dev_dbg(dev, "set 0x%x to %s_WORKPOINT_REQ.\n", val,
 		ctrl->subsys_id == IPU_IS ? "IS" : "PS");
@@ -663,9 +665,9 @@ static int ipu8_buttress_powerdown(struct device *dev,
 	exp_sts = ctrl->pwr_sts_off << ctrl->pwr_sts_shift;
 
 	if (ctrl->subsys_id == IPU_PS)
-		val = 0x10 << ctrl->ratio_shift;
+		val = 0x10U << ctrl->ratio_shift;
 	else
-		val = 0x8 << ctrl->ratio_shift;
+		val = 0x8U << ctrl->ratio_shift;
 
 	dev_dbg(dev, "set 0x%x to %s_WORKPOINT_REQ.\n", val,
 		ctrl->subsys_id == IPU_IS ? "IS" : "PS");
@@ -1094,21 +1096,45 @@ EXPORT_SYMBOL_NS_GPL(ipu_buttress_wakeup_ps_uc, "INTEL_IPU7");
 EXPORT_SYMBOL_NS_GPL(ipu_buttress_wakeup_ps_uc, INTEL_IPU7);
 #endif
 
+static const struct x86_cpu_id ipu_misc_cfg_exclusion[] = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
+	X86_MATCH_VFM_STEPS(INTEL_PANTHERLAKE_L, 0x1, 0x1, 0),
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+	X86_MATCH_VFM_STEPPINGS(INTEL_PANTHERLAKE_L, 0x1, 0),
+#else
+	X86_MATCH_VFM_STEPPINGS(0x6cc, 0x1, 0),
+#endif
+	{},
+};
+
 static void ipu_buttress_setup(struct ipu7_device *isp)
 {
 	struct device *dev = &isp->pdev->dev;
+	u32 val;
 
 	/* program PB BAR */
+#define WRXREQOP_OVRD_VAL_MASK  GENMASK(22, 19)
 	writel(0, isp->pb_base + GLOBAL_INTERRUPT_MASK);
-	if (!is_ipu7(isp->hw_ver))
-		writel(0x7c0100, isp->pb_base + BAR2_MISC_CONFIG);
+	val = readl(isp->pb_base + BAR2_MISC_CONFIG);
+	if (is_ipu7(isp->hw_ver) || x86_match_cpu(ipu_misc_cfg_exclusion))
+		val |= 0x100U;
 	else
-		writel(0x100, isp->pb_base + BAR2_MISC_CONFIG);
+		val |= FIELD_PREP(WRXREQOP_OVRD_VAL_MASK, 0xf) |
+			BIT(18) | 0x100U;
 
-	if (!is_ipu7(isp->hw_ver)) {
+	writel(val, isp->pb_base + BAR2_MISC_CONFIG);
+	val = readl(isp->pb_base + BAR2_MISC_CONFIG);
+
+	if (is_ipu8(isp->hw_ver)) {
+		writel(BIT(13), isp->pb_base + TLBID_HASH_ENABLE_63_32);
+		writel(BIT(9), isp->pb_base + TLBID_HASH_ENABLE_95_64);
+		dev_dbg(dev, "IPU8 TLBID_HASH %x %x\n",
+			readl(isp->pb_base + TLBID_HASH_ENABLE_63_32),
+			readl(isp->pb_base + TLBID_HASH_ENABLE_95_64));
+	} else if (is_ipu7p5(isp->hw_ver)) {
 		writel(BIT(14), isp->pb_base + TLBID_HASH_ENABLE_63_32);
 		writel(BIT(9), isp->pb_base + TLBID_HASH_ENABLE_95_64);
-		dev_dbg(dev, "PTL TLBID_HASH %x %x\n",
+		dev_dbg(dev, "IPU7P5 TLBID_HASH %x %x\n",
 			readl(isp->pb_base + TLBID_HASH_ENABLE_63_32),
 			readl(isp->pb_base + TLBID_HASH_ENABLE_95_64));
 	} else {
@@ -1160,8 +1186,8 @@ int ipu_buttress_init(struct ipu7_device *isp)
 
 	isp->secure_mode = ipu_buttress_get_secure_mode(isp);
 	val = readl(isp->base + BUTTRESS_REG_IPU_SKU);
-	dev_info(dev, "IPU%u SKU %u in %s mode mask 0x%x\n", val & 0xf,
-		 (val >> 4) & 0x7, isp->secure_mode ? "secure" : "non-secure",
+	dev_info(dev, "IPU%u SKU %u in %s mode mask 0x%x\n", val & 0xfU,
+		 (val >> 4) & 0x7U, isp->secure_mode ? "secure" : "non-secure",
 		 readl(isp->base + BUTTRESS_REG_CAMERA_MASK));
 	b->wdt_cached_value = readl(isp->base + BUTTRESS_REG_IDLE_WDT);
 	b->ref_clk = 384;

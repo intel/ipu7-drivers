@@ -16,6 +16,7 @@
 #include <media/media-device.h>
 #include <media/v4l2-async.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-mediabus.h>
 
 #include "abi/ipu7_fw_msg_abi.h"
 #include "abi/ipu7_fw_isys_abi.h"
@@ -34,18 +35,18 @@ struct dentry;
 #define IPU_ISYS_ENTITY_PREFIX		"Intel IPU7"
 
 /* FW support max 16 streams */
-#define IPU_ISYS_MAX_STREAMS		16
+#define IPU_ISYS_MAX_STREAMS		16U
 
-#define IPU_ISYS_2600_MEM_LINE_ALIGN	64
+#define IPU_ISYS_2600_MEM_LINE_ALIGN	64U
 
 /*
  * Current message queue configuration. These must be big enough
  * so that they never gets full. Queues are located in system memory
  */
-#define IPU_ISYS_SIZE_RECV_QUEUE	40
-#define IPU_ISYS_SIZE_LOG_QUEUE		256
-#define IPU_ISYS_SIZE_SEND_QUEUE	40
-#define IPU_ISYS_NUM_RECV_QUEUE		1
+#define IPU_ISYS_SIZE_RECV_QUEUE	40U
+#define IPU_ISYS_SIZE_LOG_QUEUE		256U
+#define IPU_ISYS_SIZE_SEND_QUEUE	40U
+#define IPU_ISYS_NUM_RECV_QUEUE		1U
 
 #define IPU_ISYS_MIN_WIDTH		2U
 #define IPU_ISYS_MIN_HEIGHT		2U
@@ -153,21 +154,7 @@ struct isys_fw_msgs {
 struct ipu7_isys_csi2_config {
 	unsigned int nlanes;
 	unsigned int port;
-};
-
-struct ipu7_isys_subdev_i2c_info {
-	struct i2c_board_info board_info;
-	int i2c_adapter_id;
-	char i2c_adapter_bdf[32];
-};
-
-struct ipu7_isys_subdev_info {
-	struct ipu7_isys_csi2_config *csi2;
-	struct ipu7_isys_subdev_i2c_info i2c;
-};
-
-struct ipu7_isys_subdev_pdata {
-	struct ipu7_isys_subdev_info **subdevs;
+	enum v4l2_mbus_type bus_type;
 };
 
 struct sensor_async_sd {
@@ -182,6 +169,4 @@ void ipu7_cleanup_fw_msg_bufs(struct ipu7_isys *isys);
 extern const struct v4l2_ioctl_ops ipu7_isys_ioctl_ops;
 
 int isys_isr_one(struct ipu7_bus_device *adev);
-irqreturn_t isys_isr(struct ipu7_bus_device *adev);
-
 #endif /* IPU7_ISYS_H */

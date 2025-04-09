@@ -17,8 +17,8 @@
 
 #include "ipu7-isys-queue.h"
 
-#define IPU_INSYS_OUTPUT_PINS		11
-#define IPU_ISYS_MAX_PARALLEL_SOF	2
+#define IPU_INSYS_OUTPUT_PINS		11U
+#define IPU_ISYS_MAX_PARALLEL_SOF	2U
 
 struct file;
 struct ipu7_isys;

@@ -2334,12 +2334,13 @@ static int ipu7_map_fw_code_region(struct ipu7_bus_device *sys,
 	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
 	struct sg_table *sgt = &sys->fw_sgt;
 	struct ipu7_device *isp = adev->isp;
+	struct pci_dev *pdev = isp->pdev;
 	unsigned long n_pages, i;
 	unsigned long attr = 0;
 	struct page **pages;
 	int ret;
 
-	n_pages = PHYS_PFN(PAGE_ALIGN(size));
+	n_pages = PFN_UP(size);
 
 	pages = kmalloc_array(n_pages, sizeof(*pages), GFP_KERNEL);
 	if (!pages)
@@ -2367,7 +2368,7 @@ static int ipu7_map_fw_code_region(struct ipu7_bus_device *sys,
 	if (!isp->secure_mode)
 		attr |= DMA_ATTR_RESERVE_REGION;
 
-	ret = dma_map_sgtable(dev, sgt, DMA_TO_DEVICE, attr);
+	ret = dma_map_sgtable(&pdev->dev, sgt, DMA_BIDIRECTIONAL, 0);
 	if (ret < 0) {
 		dev_err(dev, "map fw code[%lu pages %u nents] failed\n",
 			n_pages, sgt->nents);
@@ -2376,10 +2377,18 @@ static int ipu7_map_fw_code_region(struct ipu7_bus_device *sys,
 		goto out;
 	}
 
+	ret = ipu7_dma_map_sgtable(sys, sgt, DMA_BIDIRECTIONAL, attr);
+	if (ret) {
+		dma_unmap_sgtable(&pdev->dev, sgt, DMA_BIDIRECTIONAL, 0);
+		sg_free_table(sgt);
+		goto out;
+	}
+
+	ipu7_dma_sync_sgtable(sys, sgt);
+
 	dev_dbg(dev, "fw code region mapped at 0x%llx entries %d\n",
 		sgt->sgl->dma_address, sgt->nents);
 
-	dma_sync_sgtable_for_device(dev, sgt, DMA_TO_DEVICE);
 out:
 	kfree(pages);
 
@@ -2388,13 +2397,16 @@ out:
 
 static void ipu7_unmap_fw_code_region(struct ipu7_bus_device *sys)
 {
-	dma_unmap_sg(&sys->auxdev.dev, sys->fw_sgt.sgl,
-		     sys->fw_sgt.nents, DMA_TO_DEVICE);
-	sg_free_table(&sys->fw_sgt);
+	struct pci_dev *pdev = sys->isp->pdev;
+	struct sg_table *sgt = &sys->fw_sgt;
+
+	ipu7_dma_unmap_sgtable(sys, sgt, DMA_BIDIRECTIONAL, 0);
+	dma_unmap_sgtable(&pdev->dev, sgt, DMA_BIDIRECTIONAL, 0);
+	sg_free_table(sgt);
 }
 
 static int ipu7_init_fw_code_region_by_sys(struct ipu7_bus_device *sys,
-					   char *sys_name)
+					   const char *sys_name)
 {
 	struct device *dev = &sys->auxdev.dev;
 	struct ipu7_device *isp = sys->isp;
