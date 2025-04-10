@@ -12,14 +12,13 @@
 
 #include "ipu7-boot.h"
 #include "ipu7-bus.h"
+#include "ipu7-dma.h"
 #include "ipu7-fw-psys.h"
 #include "ipu7-syscom.h"
 #include "ipu7-psys.h"
 
 #define TLV_TYPE(type) ((u32)(type) & 0x3FU)
 #define TLV_SIZE(buf_size) (((buf_size) / TLV_ITEM_ALIGNMENT) & 0xFFFFU)
-
-#define BIT64(bit_num) (1 << (bit_num))
 
 /*
  * Node resource ID of INSYS, required when there is a link from INSYS to PSYS.
@@ -83,8 +82,8 @@ int ipu7_fw_psys_init(struct ipu7_psys *psys)
 	}
 
 	/* Allocate PSYS subsys config. */
-	psys_config = dma_alloc_attrs(dev, sizeof(struct ipu7_psys_config),
-				      &psys_config_dma_addr, GFP_KERNEL, 0);
+	psys_config = ipu7_dma_alloc(adev, sizeof(struct ipu7_psys_config),
+				     &psys_config_dma_addr, GFP_KERNEL, 0);
 	if (!psys_config) {
 		dev_err(dev, "Failed to allocate psys subsys config.\n");
 		ipu7_fw_psys_release(psys);
@@ -113,10 +112,9 @@ void ipu7_fw_psys_release(struct ipu7_psys *psys)
 
 	ipu7_boot_release_boot_config(adev);
 	if (psys->subsys_config) {
-		dma_free_attrs(&adev->auxdev.dev,
-			       sizeof(struct ipu7_psys_config),
-			       psys->subsys_config,
-			       psys->subsys_config_dma_addr, 0);
+		ipu7_dma_free(adev, sizeof(struct ipu7_psys_config),
+			      psys->subsys_config,
+			      psys->subsys_config_dma_addr, 0);
 		psys->subsys_config = NULL;
 		psys->subsys_config_dma_addr = 0;
 	}
@@ -509,7 +507,7 @@ int ipu7_fw_psys_task_request(const struct ipu_psys_task_request *task,
 	num_terms = ip->nodes[msg->node_ctx_id].num_terms;
 	for (i = 0U; i < num_terms; i++) {
 		term_id = tq->task_buffers[i].term_id;
-		if (BIT64(term_id) & teb)
+		if ((1U << term_id) & teb)
 			msg->term_buffers[term_id] = tq->ipu7_addr[i];
 	}
 

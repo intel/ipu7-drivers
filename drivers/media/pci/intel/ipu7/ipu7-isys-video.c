@@ -687,7 +687,7 @@ static void close_streaming_firmware(struct ipu7_isys_video *av)
 
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 		stream->last_sequence = atomic_read(&stream->sequence);
-		dev_dbg(dev, "IPU_ISYS_RESET: ip->last_sequence = %d\n",
+		dev_dbg(dev, "ip->last_sequence = %d\n",
 			stream->last_sequence);
 
 #endif
@@ -842,8 +842,14 @@ ipu7_isys_query_stream_by_source(struct ipu7_isys *isys, int source, u8 vc)
 	unsigned long flags;
 	unsigned int i;
 
-	if (!isys || source < 0)
+	if (!isys)
 		return NULL;
+
+	if (source < 0) {
+		dev_err(&isys->adev->auxdev.dev,
+			"query stream with invalid port number\n");
+		return NULL;
+	}
 
 	spin_lock_irqsave(&isys->streams_lock, flags);
 	for (i = 0; i < IPU_ISYS_MAX_STREAMS; i++) {
@@ -1235,6 +1241,7 @@ int ipu7_isys_video_init(struct ipu7_isys_video *av)
 	av->vdev.release = video_device_release_empty;
 	av->vdev.fops = &isys_fops;
 	av->vdev.v4l2_dev = &av->isys->v4l2_dev;
+	av->vdev.dev_parent = &av->isys->adev->isp->pdev->dev;
 	av->vdev.ioctl_ops = &ipu7_v4l2_ioctl_ops;
 	av->vdev.queue = &av->aq.vbq;
 	av->vdev.lock = &av->mutex;

@@ -28,17 +28,14 @@
 #include "ipu7-bus.h"
 #include "ipu7-buttress.h"
 #include "ipu7-cpd.h"
+#include "ipu7-dma.h"
 #include "ipu7-fw-psys.h"
 #include "ipu7-psys.h"
 #include "ipu7-platform-regs.h"
 #include "ipu7-syscom.h"
 #include "ipu7-boot.h"
 
-static bool async_fw_init;
-module_param(async_fw_init, bool, 0664);
-MODULE_PARM_DESC(async_fw_init, "Enable asynchronous firmware initialization");
-
-#define IPU_PSYS_NUM_DEVICES		4
+#define IPU_PSYS_NUM_DEVICES		4U
 
 static int psys_runtime_pm_resume(struct device *dev);
 static int psys_runtime_pm_suspend(struct device *dev);
@@ -49,13 +46,6 @@ static int psys_runtime_pm_suspend(struct device *dev);
 static dev_t ipu7_psys_dev_t;
 static DECLARE_BITMAP(ipu7_psys_devices, IPU_PSYS_NUM_DEVICES);
 static DEFINE_MUTEX(ipu7_psys_mutex);
-
-static struct fw_init_task {
-	struct delayed_work work;
-	struct ipu7_psys *psys;
-} fw_init_task;
-
-static void ipu7_psys_remove(struct auxiliary_device *auxdev);
 
 static int ipu7_psys_get_userpages(struct ipu7_dma_buf_attach *attach)
 {
@@ -178,30 +168,44 @@ static struct sg_table *ipu7_dma_buf_map(struct dma_buf_attachment *attach,
 					 enum dma_data_direction dir)
 {
 	struct ipu7_dma_buf_attach *ipu7_attach = attach->priv;
+	struct pci_dev *pdev = to_pci_dev(attach->dev);
+	struct ipu7_device *isp = pci_get_drvdata(pdev);
+	struct ipu7_bus_device *adev = isp->psys;
 	unsigned long attrs;
 	int ret;
 
 	attrs = DMA_ATTR_SKIP_CPU_SYNC;
-	ret = dma_map_sgtable(attach->dev, ipu7_attach->sgt, dir, attrs);
-	if (ret < 0) {
-		dev_err(attach->dev, "buf map failed\n");
+	ret = dma_map_sgtable(&pdev->dev, ipu7_attach->sgt, DMA_BIDIRECTIONAL,
+			      attrs);
+	if (ret) {
+		dev_err(attach->dev, "pci buf map failed\n");
 		return ERR_PTR(-EIO);
 	}
 
-	/*
-	 * Initial cache flush to avoid writing dirty pages for buffers which
-	 * are later marked as IPU_BUFFER_FLAG_NO_FLUSH.
-	 */
-	dma_sync_sgtable_for_device(attach->dev, ipu7_attach->sgt,
+	dma_sync_sgtable_for_device(&pdev->dev, ipu7_attach->sgt,
 				    DMA_BIDIRECTIONAL);
+
+	ret = ipu7_dma_map_sgtable(adev, ipu7_attach->sgt, dir, 0);
+	if (ret) {
+		dev_err(attach->dev, "ipu7 buf map failed\n");
+		return ERR_PTR(-EIO);
+	}
+
+	ipu7_dma_sync_sgtable(adev, ipu7_attach->sgt);
 
 	return ipu7_attach->sgt;
 }
 
 static void ipu7_dma_buf_unmap(struct dma_buf_attachment *attach,
-			       struct sg_table *sg, enum dma_data_direction dir)
+			       struct sg_table *sgt,
+			       enum dma_data_direction dir)
 {
-	dma_unmap_sgtable(attach->dev, sg, dir, DMA_ATTR_SKIP_CPU_SYNC);
+	struct pci_dev *pdev = to_pci_dev(attach->dev);
+	struct ipu7_device *isp = pci_get_drvdata(pdev);
+	struct ipu7_bus_device *adev = isp->psys;
+
+	ipu7_dma_unmap_sgtable(adev, sgt, dir, DMA_ATTR_SKIP_CPU_SYNC);
+	dma_unmap_sgtable(&pdev->dev, sgt, DMA_BIDIRECTIONAL, 0);
 }
 
 static int ipu7_dma_buf_mmap(struct dma_buf *dbuf, struct vm_area_struct *vma)
@@ -306,12 +310,9 @@ static void ipu7_psys_put_graph_id(struct ipu7_psys_fh *fh)
 static void ipu7_psys_free_msg_task(struct ipu_psys_task_queue *tq,
 				    struct ipu7_bus_device *adev)
 {
-	if (tq->msg_task) {
-		dma_free_attrs(&adev->auxdev.dev,
-			       sizeof(struct ipu7_msg_task),
-			       tq->msg_task,
-			       tq->task_dma_addr, 0);
-	}
+	if (tq->msg_task)
+		ipu7_dma_free(adev, sizeof(struct ipu7_msg_task),
+			      tq->msg_task, tq->task_dma_addr, 0);
 
 	list_del(&tq->list);
 	kfree(tq);
@@ -381,9 +382,8 @@ static int ipu7_psys_stream_init(struct ipu7_psys_stream *ip,
 		list_add(&tq->list, &ip->tq_list);
 
 		tq->msg_task =
-			dma_alloc_attrs(dev, sizeof(struct ipu7_msg_task),
-					&tq->task_dma_addr,
-					GFP_KERNEL, 0);
+			ipu7_dma_alloc(adev, sizeof(struct ipu7_msg_task),
+				       &tq->task_dma_addr, GFP_KERNEL, 0);
 
 		if (!tq->msg_task) {
 			dev_err(dev, "Failed to allocate msg task.\n");
@@ -486,7 +486,8 @@ alloc_failed:
 	return ret;
 }
 
-static inline void ipu7_psys_kbuf_unmap(struct ipu7_psys_kbuffer *kbuf)
+static inline void ipu7_psys_kbuf_unmap(struct ipu7_psys_fh *fh,
+					struct ipu7_psys_kbuffer *kbuf)
 {
 	if (!kbuf)
 		return;
@@ -498,6 +499,10 @@ static inline void ipu7_psys_kbuf_unmap(struct ipu7_psys_kbuffer *kbuf)
 		iosys_map_set_vaddr(&dmap, kbuf->kaddr);
 		dma_buf_vunmap_unlocked(kbuf->dbuf, &dmap);
 	}
+
+	if (!kbuf->userptr)
+		ipu7_dma_unmap_sgtable(fh->psys->adev, kbuf->sgt,
+				       DMA_BIDIRECTIONAL, 0);
 
 	if (kbuf->sgt)
 		dma_buf_unmap_attachment_unlocked(kbuf->db_attach,
@@ -528,7 +533,7 @@ static int ipu7_psys_release(struct inode *inode, struct file *file)
 
 			/* Unmap and release buffers */
 			if (kbuf->dbuf && dba) {
-				ipu7_psys_kbuf_unmap(kbuf);
+				ipu7_psys_kbuf_unmap(fh, kbuf);
 			} else {
 				if (dba)
 					ipu7_psys_put_userpages(dba->priv);
@@ -646,7 +651,7 @@ static int ipu7_psys_unmapbuf_locked(int fd, struct ipu7_psys_fh *fh,
 	}
 
 	/* From now on it is not safe to use this kbuffer */
-	ipu7_psys_kbuf_unmap(kbuf);
+	ipu7_psys_kbuf_unmap(fh, kbuf);
 
 	list_del(&kbuf->list);
 
@@ -661,11 +666,10 @@ static int ipu7_psys_unmapbuf_locked(int fd, struct ipu7_psys_fh *fh,
 static int ipu7_psys_mapbuf_locked(int fd, struct ipu7_psys_fh *fh,
 				   struct ipu7_psys_kbuffer *kbuf)
 {
-	struct device *dev = &fh->psys->adev->auxdev.dev;
+	struct ipu7_psys *psys = fh->psys;
+	struct device *dev = &psys->adev->isp->pdev->dev;
 	struct dma_buf *dbuf;
-	struct iosys_map dmap = {
-		.is_iomem = false,
-	};
+	struct iosys_map dmap;
 	int ret;
 
 	dbuf = dma_buf_get(fd);
@@ -735,12 +739,22 @@ static int ipu7_psys_mapbuf_locked(int fd, struct ipu7_psys_fh *fh,
 		goto kbuf_map_fail;
 	}
 
+	if (!kbuf->userptr) {
+		ret = ipu7_dma_map_sgtable(psys->adev, kbuf->sgt,
+					   DMA_BIDIRECTIONAL, 0);
+		if (ret) {
+			dev_dbg(dev, "ipu7 buf map failed\n");
+			goto kbuf_map_fail;
+		}
+	}
+
 	kbuf->dma_addr = sg_dma_address(kbuf->sgt->sgl);
 
 	/* no need vmap for imported dmabufs */
 	if (!kbuf->userptr)
 		goto mapbuf_end;
 
+	dmap.is_iomem = false;
 	ret = dma_buf_vmap_unlocked(kbuf->dbuf, &dmap);
 	if (ret) {
 		dev_err(dev, "dma buf vmap failed\n");
@@ -748,18 +762,23 @@ static int ipu7_psys_mapbuf_locked(int fd, struct ipu7_psys_fh *fh,
 	}
 	kbuf->kaddr = dmap.vaddr;
 
-	dev_dbg(dev, "%s kbuf %p fd %d with len %llu mapped\n",
-		__func__, kbuf, fd, kbuf->len);
 mapbuf_end:
+	dev_dbg(dev, "%s %s kbuf %p fd %d with len %llu mapped\n",
+		__func__, kbuf->kaddr ? "private" : "imported", kbuf, fd,
+		kbuf->len);
 	kbuf->valid = true;
 
 	return 0;
 
 kbuf_map_fail:
-	if (!IS_ERR_OR_NULL(kbuf->sgt))
+	if (!IS_ERR_OR_NULL(kbuf->sgt)) {
+		if (!kbuf->userptr)
+			ipu7_dma_unmap_sgtable(psys->adev, kbuf->sgt,
+					       DMA_BIDIRECTIONAL, 0);
 		dma_buf_unmap_attachment_unlocked(kbuf->db_attach,
 						  kbuf->sgt,
 						  DMA_BIDIRECTIONAL);
+	}
 	dma_buf_detach(kbuf->dbuf, kbuf->db_attach);
 
 attach_fail:
@@ -779,12 +798,12 @@ static long ipu7_psys_mapbuf(int fd, struct ipu7_psys_fh *fh)
 	long ret;
 	struct ipu7_psys_kbuffer *kbuf;
 
+	dev_dbg(&fh->psys->adev->auxdev.dev, "IOC_MAPBUF\n");
+
 	mutex_lock(&fh->mutex);
 	kbuf = ipu7_psys_lookup_kbuffer(fh, fd);
 	ret = ipu7_psys_mapbuf_locked(fd, fh, kbuf);
 	mutex_unlock(&fh->mutex);
-
-	dev_dbg(&fh->psys->adev->auxdev.dev, "IOC_MAPBUF ret %ld\n", ret);
 
 	return ret;
 }
@@ -794,6 +813,8 @@ static long ipu7_psys_unmapbuf(int fd, struct ipu7_psys_fh *fh)
 	struct device *dev = &fh->psys->adev->auxdev.dev;
 	struct ipu7_psys_kbuffer *kbuf;
 	long ret;
+
+	dev_dbg(dev, "IOC_UNMAPBUF\n");
 
 	mutex_lock(&fh->mutex);
 	kbuf = ipu7_psys_lookup_kbuffer(fh, fd);
@@ -805,8 +826,6 @@ static long ipu7_psys_unmapbuf(int fd, struct ipu7_psys_fh *fh)
 	}
 	ret = ipu7_psys_unmapbuf_locked(fd, fh, kbuf);
 	mutex_unlock(&fh->mutex);
-
-	dev_dbg(dev, "IOC_UNMAPBUF\n");
 
 	return ret;
 }
@@ -909,7 +928,6 @@ ipu7_psys_get_task_queue(struct ipu7_psys_stream *ip,
 			 struct ipu_psys_task_request *task)
 {
 	struct device *dev = &ip->fh->psys->dev;
-	struct device *adev = &ip->fh->psys->adev->auxdev.dev;
 	struct ipu7_psys_kbuffer *kbuf = NULL;
 	struct ipu_psys_task_queue *tq;
 	int fd, prevfd = -1;
@@ -952,8 +970,9 @@ ipu7_psys_get_task_queue(struct ipu7_psys_stream *ip,
 			continue;
 
 		prevfd = fd;
-		dma_sync_sgtable_for_device(adev, kbuf->sgt,
-					    DMA_BIDIRECTIONAL);
+
+		if (kbuf->kaddr)
+			clflush_cache_range(kbuf->kaddr, kbuf->len);
 	}
 
 	dev_dbg(dev, "frame %d to task queue %p\n", task->frame_id, tq);
@@ -1031,7 +1050,6 @@ static long ipu7_psys_ioctl(struct file *file, unsigned int cmd,
 		struct ipu_psys_task_request task;
 		struct ipu_psys_buffer buf;
 		struct ipu_psys_event ev;
-		struct ipu_psys_capability caps;
 	} karg;
 	struct ipu7_psys_fh *fh = file->private_data;
 	long err = 0;
@@ -1056,9 +1074,6 @@ static long ipu7_psys_ioctl(struct file *file, unsigned int cmd,
 		break;
 	case IPU_IOC_UNMAPBUF:
 		err = ipu7_psys_unmapbuf(arg, fh);
-		break;
-	case IPU_IOC_QUERYCAP:
-		karg.caps = fh->psys->caps;
 		break;
 	case IPU_IOC_GETBUF:
 		err = ipu7_psys_getbuf(&karg.buf, fh);
@@ -1125,13 +1140,6 @@ static int psys_runtime_pm_resume(struct device *dev)
 	ret = ipu7_mmu_hw_init(adev->mmu);
 	if (ret)
 		return ret;
-
-	if (async_fw_init && !psys->adev->syscom) {
-		dev_err(dev,
-			"%s: asynchronous firmware init not finished, skipping\n",
-			__func__);
-		return 0;
-	}
 
 	if (!ipu_buttress_auth_done(adev->isp)) {
 		dev_dbg(dev, "%s: not yet authenticated, skipping\n", __func__);
@@ -1219,57 +1227,7 @@ static const struct dev_pm_ops psys_pm_ops = {
 	.resume = psys_resume,
 };
 
-#define PSYS_PM_OPS (&psys_pm_ops)
-
 #ifdef CONFIG_DEBUG_FS
-static int ipu7_psys_icache_prefetch_sp_get(void *data, u64 *val)
-{
-	struct ipu7_psys *psys = data;
-
-	*val = psys->icache_prefetch_sp;
-	return 0;
-}
-
-static int ipu7_psys_icache_prefetch_sp_set(void *data, u64 val)
-{
-	struct ipu7_psys *psys = data;
-
-	if (val != !!val)
-		return -EINVAL;
-
-	psys->icache_prefetch_sp = val;
-
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(psys_icache_prefetch_sp_fops,
-			ipu7_psys_icache_prefetch_sp_get,
-			ipu7_psys_icache_prefetch_sp_set, "%llu\n");
-
-static int ipu7_psys_icache_prefetch_isp_get(void *data, u64 *val)
-{
-	struct ipu7_psys *psys = data;
-
-	*val = psys->icache_prefetch_isp;
-	return 0;
-}
-
-static int ipu7_psys_icache_prefetch_isp_set(void *data, u64 val)
-{
-	struct ipu7_psys *psys = data;
-
-	if (val != !!val)
-		return -EINVAL;
-
-	psys->icache_prefetch_isp = val;
-
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(psys_icache_prefetch_isp_fops,
-			ipu7_psys_icache_prefetch_isp_get,
-			ipu7_psys_icache_prefetch_isp_set, "%llu\n");
-
 static int psys_fw_log_init(struct ipu7_psys *psys)
 {
 	struct device *dev = &psys->adev->auxdev.dev;
@@ -1356,16 +1314,6 @@ static int ipu7_psys_init_debugfs(struct ipu7_psys *psys)
 	if (IS_ERR(dir))
 		return -ENOMEM;
 
-	file = debugfs_create_file("icache_prefetch_sp", 0600,
-				   dir, psys, &psys_icache_prefetch_sp_fops);
-	if (IS_ERR(file))
-		goto err;
-
-	file = debugfs_create_file("icache_prefetch_isp", 0600,
-				   dir, psys, &psys_icache_prefetch_isp_fops);
-	if (IS_ERR(file))
-		goto err;
-
 	file = debugfs_create_file("fwlog", 0400,
 				   dir, psys, &psys_fw_log_fops);
 	if (IS_ERR(file))
@@ -1379,23 +1327,6 @@ err:
 	return -ENOMEM;
 }
 #endif
-
-static void run_fw_init_work(struct work_struct *work)
-{
-	struct fw_init_task *task = (struct fw_init_task *)work;
-	struct ipu7_psys *psys = task->psys;
-	struct auxiliary_device *auxdev = &psys->adev->auxdev;
-	int ret;
-
-	ret = ipu7_fw_psys_init(psys);
-
-	if (ret) {
-		dev_err(&auxdev->dev, "FW init failed(%d)\n", ret);
-		ipu7_psys_remove(auxdev);
-	} else {
-		dev_info(&auxdev->dev, "FW init done\n");
-	}
-}
 
 static const struct bus_type ipu7_psys_bus = {
 	.name = "intel-ipu7-psys",
@@ -1453,7 +1384,6 @@ static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 
 	psys->adev = adev;
 	psys->pdata = adev->pdata;
-	psys->icache_prefetch_sp = 0;
 
 	cdev_init(&psys->cdev, &ipu7_psys_fops);
 	psys->cdev.owner = ipu7_psys_fops.owner;
@@ -1474,15 +1404,7 @@ static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 	mutex_init(&psys->mutex);
 	INIT_LIST_HEAD(&psys->fhs);
 
-	if (async_fw_init) {
-		INIT_DELAYED_WORK((struct delayed_work *)&fw_init_task,
-				  run_fw_init_work);
-		fw_init_task.psys = psys;
-		schedule_delayed_work((struct delayed_work *)&fw_init_task, 0);
-	} else {
-		ret = ipu7_fw_psys_init(psys);
-	}
-
+	ret = ipu7_fw_psys_init(psys);
 	if (ret) {
 		dev_err(dev, "FW init failed(%d)\n", ret);
 		goto out_mutex_destroy;
@@ -1499,24 +1421,12 @@ static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 		goto out_fw_release;
 	}
 
+	dev_set_drvdata(dev, psys);
 #ifdef CONFIG_DEBUG_FS
 	psys_fw_log_init(psys);
-
-#endif
-	/* Add the hw stepping information to caps */
-	strscpy(psys->caps.dev_model, IPU_MEDIA_DEV_MODEL_NAME,
-		sizeof(psys->caps.dev_model));
-
-	dev_set_drvdata(dev, psys);
-
-	mutex_unlock(&ipu7_psys_mutex);
-
-#ifdef CONFIG_DEBUG_FS
-	/* Debug fs failure is not fatal. */
 	ipu7_psys_init_debugfs(psys);
 #endif
-
-	dev_info(dev, "psys probe minor: %d\n", minor);
+	dev_info(dev, "IPU psys probe done.\n");
 
 	ipu7_mmu_hw_cleanup(adev->mmu);
 	pm_runtime_put(&auxdev->dev);
@@ -1619,7 +1529,7 @@ static struct auxiliary_driver ipu7_psys_driver = {
 	.remove = ipu7_psys_remove,
 	.id_table = ipu7_psys_id_table,
 	.driver = {
-		.pm = PSYS_PM_OPS,
+		.pm = &psys_pm_ops,
 	},
 };
 

@@ -63,7 +63,7 @@ struct ipu7_auxdrv_data {
 struct ipu7_bus_device *
 ipu7_bus_initialize_device(struct pci_dev *pdev, struct device *parent,
 			   void *pdata, const struct ipu_buttress_ctrl *ctrl,
-			   char *name);
+			   const char *name);
 int ipu7_bus_add_device(struct ipu7_bus_device *adev);
 void ipu7_bus_del_devices(struct pci_dev *pdev);
 #endif

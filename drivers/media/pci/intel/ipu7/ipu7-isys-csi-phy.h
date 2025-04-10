@@ -8,8 +8,8 @@
 
 struct ipu7_isys;
 
-#define PHY_MODE_DPHY		0
-#define PHY_MODE_CPHY		1
+#define PHY_MODE_DPHY		0U
+#define PHY_MODE_CPHY		1U
 
 int ipu7_isys_csi_phy_powerup(struct ipu7_isys_csi2 *csi2);
 void ipu7_isys_csi_phy_powerdown(struct ipu7_isys_csi2 *csi2);

@@ -128,7 +128,7 @@ u32 ipu7_isys_convert_bayer_order(u32 code, int x, int y)
 	if (WARN_ON(i == ARRAY_SIZE(code_map)))
 		return code;
 
-	return code_map[i ^ (((y & 1) << 1) | (x & 1))];
+	return code_map[i ^ ((((u32)y & 1U) << 1U) | ((u32)x & 1U))];
 }
 
 int ipu7_isys_subdev_set_fmt(struct v4l2_subdev *sd,
@@ -221,7 +221,7 @@ static int subdev_set_routing(struct v4l2_subdev *sd,
 			      struct v4l2_subdev_state *state,
 			      struct v4l2_subdev_krouting *routing)
 {
-	static const struct v4l2_mbus_framefmt format = {
+	static const struct v4l2_mbus_framefmt fmt = {
 		.width = 4096,
 		.height = 3072,
 		.code = MEDIA_BUS_FMT_SGRBG10_1X10,
@@ -234,7 +234,7 @@ static int subdev_set_routing(struct v4l2_subdev *sd,
 	if (ret)
 		return ret;
 
-	return v4l2_subdev_set_routing_with_fmt(sd, state, routing, &format);
+	return v4l2_subdev_set_routing_with_fmt(sd, state, routing, &fmt);
 }
 
 int ipu7_isys_get_stream_pad_fmt(struct v4l2_subdev *sd, u32 pad, u32 stream,

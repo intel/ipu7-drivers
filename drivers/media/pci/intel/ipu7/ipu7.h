@@ -103,18 +103,18 @@ struct ipu7_device {
 /* FW is accessible within the first 2 GiB only in non-secure mode. */
 #define IPU_MMU_ADDR_BITS_NON_SECURE	31
 
-#define IPU7_IS_MMU_NUM			4
-#define IPU7_PS_MMU_NUM			4
-#define IPU7P5_IS_MMU_NUM		4
-#define IPU7P5_PS_MMU_NUM		4
-#define IPU8_IS_MMU_NUM			5
-#define IPU8_PS_MMU_NUM			4
-#define IPU_MMU_MAX_NUM			5 /* max(IS, PS) */
-#define IPU_MMU_MAX_TLB_L1_STREAMS	40
-#define IPU_MMU_MAX_TLB_L2_STREAMS	40
-#define IPU_ZLX_MAX_NUM			32
-#define IPU_ZLX_POOL_NUM		8
-#define IPU_UAO_PLANE_MAX_NUM		64
+#define IPU7_IS_MMU_NUM			4U
+#define IPU7_PS_MMU_NUM			4U
+#define IPU7P5_IS_MMU_NUM		4U
+#define IPU7P5_PS_MMU_NUM		4U
+#define IPU8_IS_MMU_NUM			5U
+#define IPU8_PS_MMU_NUM			4U
+#define IPU_MMU_MAX_NUM			5U /* max(IS, PS) */
+#define IPU_MMU_MAX_TLB_L1_STREAMS	40U
+#define IPU_MMU_MAX_TLB_L2_STREAMS	40U
+#define IPU_ZLX_MAX_NUM			32U
+#define IPU_ZLX_POOL_NUM		8U
+#define IPU_UAO_PLANE_MAX_NUM		64U
 
 /*
  * To maximize the IOSF utlization, IPU need to send requests in bursts.
@@ -143,8 +143,6 @@ struct ipu7_device {
 
 /* Currently chosen arbitration mechanism for VC1 */
 #define IPU_BTRS_ARB_STALL_MODE_VC1	IPU_BTRS_ARB_MODE_TYPE_REARB
-
-struct ipu7_isys_subdev_pdata;
 
 /* One L2 entry maps 1024 L1 entries and one L1 entry per page */
 #define IPU_MMUV2_L2_RANGE		(1024 * PAGE_SIZE)

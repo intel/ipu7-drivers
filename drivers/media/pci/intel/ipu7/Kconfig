@@ -1,19 +1,24 @@
 config VIDEO_INTEL_IPU7
 	tristate "Intel IPU7 driver"
-	depends on ACPI
-	depends on MEDIA_SUPPORT
-	depends on MEDIA_PCI_SUPPORT
-	depends on X86_64
-	select IOMMU_API
+	depends on ACPI || COMPILE_TEST
+	depends on VIDEO_DEV
+	depends on X86 && HAS_DMA
+	depends on IPU_BRIDGE || !IPU_BRIDGE
+        #
+        # This driver incorrectly tries to override the dma_ops.  It should
+        # never have done that, but for now keep it working on architectures
+        # that use dma ops
+        #
+        depends on ARCH_HAS_DMA_OPS
+	select AUXILIARY_BUS
 	select IOMMU_IOVA
-	select X86_DEV_DMA_OPS
-	select VIDEOBUF2_DMA_CONTIG
+	select VIDEO_V4L2_SUBDEV_API
+	select MEDIA_CONTROLLER
+	select VIDEOBUF2_DMA_SG
 	select V4L2_FWNODE
-	select PHYS_ADDR_T_64BIT
-	select COMMON_CLK
 	help
-	  This is the Intel imaging processing unit, found in Intel SoCs and
-	  used for capturing images and video from a camera sensor.
+	  This is the 7th Gen Intel Image Processing Unit, found in Intel SoCs
+	  and used for capturing images and video from camera sensors.
 
 	  To compile this driver, say Y here! It contains 3 modules -
 	  intel_ipu7, intel_ipu7_isys and intel_ipu7_psys.
@@ -30,11 +35,11 @@ config VIDEO_INTEL_IPU7_MGC
 	  you must select this option, otherwise no.
 
 config VIDEO_INTEL_IPU7_ISYS_RESET
-	tristate "IPU7 ISYS RESET"
+	bool "IPU7 ISYS RESET"
 	depends on VIDEO_INTEL_IPU7
 	default n
 	help
-	  This is to support ISYS reset in Intel IPU7 IPU driver and
-	  used for HDMI to MIPI device hot plug use cases.
+	  This option enables IPU7 ISYS reset feature to support
+	  HDMI-MIPI converter hot-plugging.
 
-	  To compile this driver, say Y here!
+	  If doubt, say N here.

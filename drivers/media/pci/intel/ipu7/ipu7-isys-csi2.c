@@ -161,8 +161,9 @@ static void ipu7_isys_csi2_disable_stream(struct ipu7_isys_csi2 *csi2)
 
 	offset = IS_IO_GPREGS_BASE;
 	val = readl(isys_base + offset + CSI_PORT_CLK_GATE);
-	val &= ~(1 << port);
-	if (port == 0 && nlanes == 4 && !is_ipu7(isys->adev->isp->hw_ver))
+
+	val &= ~(1U << port);
+	if (port == 0U && nlanes == 4U && !is_ipu7(isys->adev->isp->hw_ver))
 		val &= ~BIT(1);
 	writel(val, isys_base + offset + CSI_PORT_CLK_GATE);
 
@@ -185,13 +186,14 @@ static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2)
 	offset = IS_IO_GPREGS_BASE;
 	/* port AB support aggregation, configure 2 ports */
 	val = readl(isys_base + offset + CSI_PORT_CLK_GATE);
-	writel(val | (0x3 << (port & 0x2)),
+
+	writel(val | (0x3U << (port & 0x2U)),
 	       isys_base + offset + CSI_PORT_CLK_GATE);
 	writel(0x2, isys_base + offset + CLK_DIV_FACTOR_APB_CLK);
 	dev_dbg(dev, "port %u CLK_GATE = 0x%04x DIV_FACTOR_APB_CLK=0x%04x\n",
 		port, readl(isys_base + offset + CSI_PORT_CLK_GATE),
 		readl(isys_base + offset + CLK_DIV_FACTOR_APB_CLK));
-	if (port == 0 && nlanes == 4 && !is_ipu7(isys->adev->isp->hw_ver)) {
+	if (port == 0U && nlanes == 4U && !is_ipu7(isys->adev->isp->hw_ver)) {
 		dev_info(dev, "CSI port %u in aggregation mode\n", port);
 		writel(0x1, isys_base + offset + CSI_PORTAB_AGGREGATION);
 	}
@@ -244,8 +246,8 @@ static int ipu7_isys_csi2_set_sel(struct v4l2_subdev *sd,
 	sel->r.width = sink_ffmt->width;
 	/* Non-bayer formats can't be single line cropped */
 	if (!ipu7_isys_is_bayer_format(sink_ffmt->code))
-		sel->r.top &= ~1;
-	sel->r.height = clamp(sel->r.height & ~1, IPU_ISYS_MIN_HEIGHT,
+		sel->r.top &= ~1U;
+	sel->r.height = clamp(sel->r.height & ~1U, IPU_ISYS_MIN_HEIGHT,
 			      sink_ffmt->height - sel->r.top);
 	*crop = sel->r;
 
@@ -435,9 +437,9 @@ int ipu7_isys_csi2_init(struct ipu7_isys_csi2 *csi2,
 	csi2->port = index;
 
 	if (!is_ipu7(isys->adev->isp->hw_ver))
-		csi2->legacy_irq_mask = 0x7 << (index * 3);
+		csi2->legacy_irq_mask = 0x7U << (index * 3U);
 	else
-		csi2->legacy_irq_mask = 0x3 << (index * 2);
+		csi2->legacy_irq_mask = 0x3U << (index * 2U);
 
 	dev_dbg(dev, "csi-%d legacy irq mask = 0x%x\n", index,
 		csi2->legacy_irq_mask);
@@ -448,9 +450,9 @@ int ipu7_isys_csi2_init(struct ipu7_isys_csi2 *csi2,
 	ret = ipu7_isys_subdev_init(&csi2->asd, &csi2_sd_ops, 0,
 				    NR_OF_CSI2_SINK_PADS, NR_OF_CSI2_SRC_PADS);
 	if (ret)
-		goto fail;
+		return ret;
 
-	csi2->asd.source = IPU_INSYS_MIPI_PORT_0 + index;
+	csi2->asd.source = (int)index;
 	csi2->asd.supported_codes = csi2_supported_codes;
 	snprintf(csi2->asd.sd.name, sizeof(csi2->asd.sd.name),
 		 IPU_ISYS_ENTITY_PREFIX " CSI2 %u", index);
@@ -459,19 +461,21 @@ int ipu7_isys_csi2_init(struct ipu7_isys_csi2 *csi2,
 	ret = v4l2_subdev_init_finalize(&csi2->asd.sd);
 	if (ret) {
 		dev_err(dev, "failed to init v4l2 subdev (%d)\n", ret);
-		goto fail;
+		goto isys_subdev_cleanup;
 	}
 
 	ret = v4l2_device_register_subdev(&isys->v4l2_dev, &csi2->asd.sd);
 	if (ret) {
 		dev_err(dev, "failed to register v4l2 subdev (%d)\n", ret);
-		goto fail;
+		goto v4l2_subdev_cleanup;
 	}
 
 	return 0;
 
-fail:
-	ipu7_isys_csi2_cleanup(csi2);
+v4l2_subdev_cleanup:
+	v4l2_subdev_cleanup(&csi2->asd.sd);
+isys_subdev_cleanup:
+	ipu7_isys_subdev_cleanup(&csi2->asd);
 
 	return ret;
 }
