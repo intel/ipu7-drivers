@@ -137,6 +137,7 @@ struct ipu7_isys {
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	struct mutex reset_mutex;
 	bool in_reset;
+	bool in_reset_stop_streaming;
 	bool in_stop_streaming;
 #endif
 };

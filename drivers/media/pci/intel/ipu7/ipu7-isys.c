@@ -523,6 +523,7 @@ out_isys_notifier_cleanup:
 out_tpg_unregister_subdevices:
 	isys_tpg_unregister_subdevices(isys);
 #endif
+
 out_csi2_unregister_subdevices:
 	isys_csi2_unregister_subdevices(isys);
 
