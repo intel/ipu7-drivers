@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #include <linux/atomic.h>
@@ -385,6 +385,14 @@ static void buf_queue(struct vb2_buffer *vb)
 	dma_addr_t dma;
 	int ret;
 
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	while (av->isys->in_reset_stop_streaming) {
+		dev_dbg(dev, "buffer: %s: wait for reset stop\n", av->vdev.name);
+		usleep_range(10000, 11000);
+	}
+	/* ip may be cleared in ipu reset */
+	stream = av->stream;
+#endif
 	dev_dbg(dev, "queue buffer %u for %s\n", vb->index, av->vdev.name);
 
 	dma = ivb->dma_addr;
@@ -394,19 +402,6 @@ static void buf_queue(struct vb2_buffer *vb)
 	list_add(&ib->head, &aq->incoming);
 	spin_unlock_irqrestore(&aq->lock, flags);
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
-	mutex_lock(&av->isys->reset_mutex);
-	while (av->isys->in_reset) {
-		mutex_unlock(&av->isys->reset_mutex);
-		dev_dbg(dev, "buffer: %s: wait for reset\n", av->vdev.name);
-		usleep_range(10000, 11000);
-		mutex_lock(&av->isys->reset_mutex);
-	}
-	mutex_unlock(&av->isys->reset_mutex);
-	/* ip may be cleared in ipu reset */
-	stream = av->stream;
-
-#endif
 	if (!media_pipe || !vb->vb2_queue->start_streaming_called) {
 		dev_dbg(dev, "media pipeline is not ready for %s\n",
 			av->vdev.name);
@@ -659,7 +654,6 @@ out_return_buffers:
 }
 
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
-#if 0
 static void reset_stop_streaming(struct ipu7_isys_video *av)
 {
 	struct ipu7_isys_queue *aq = &av->aq;
@@ -676,7 +670,9 @@ static void reset_stop_streaming(struct ipu7_isys_video *av)
 
 	ipu7_isys_stream_cleanup(av);
 
+	av->isys->in_reset_stop_streaming = true;
 	return_buffers(aq, VB2_BUF_STATE_ERROR);
+	av->isys->in_reset_stop_streaming = false;
 
 	ipu7_isys_fw_close(av->isys);
 }
@@ -746,6 +742,7 @@ static int ipu_isys_reset(struct ipu7_isys_video *self_av,
 
 	mutex_unlock(&isys->reset_mutex);
 
+	dev_dbg(dev, "reset stop streams\n");
 	for (i = 0; i < csi2_pdata->nports; i++) {
 		for (j = 0; j < NR_OF_CSI2_SRC_PADS; j++) {
 			av = &isys->csi2[i].av[j];
@@ -768,28 +765,9 @@ static int ipu_isys_reset(struct ipu7_isys_video *self_av,
 	if (!has_streaming)
 		goto end_of_reset;
 
-	dev_dbg(dev, "ipu reset, power cycle\n");
-	/* bus_pm_runtime_suspend() */
-	/* isys_runtime_pm_suspend() */
-	dev->bus->pm->runtime_suspend(dev);
-
-	/* ipu_suspend */
-	isp->pdev->driver->driver.pm->runtime_suspend(&isp->pdev->dev);
-
-	/* ipu_runtime_resume */
-	isp->pdev->driver->driver.pm->runtime_resume(&isp->pdev->dev);
-
-	/* bus_pm_runtime_resume() */
-	/* isys_runtime_pm_resume() */
-	dev->bus->pm->runtime_resume(dev);
-
 	ipu7_cleanup_fw_msg_bufs(isys);
 
-	ret = ipu7_fw_isys_init(av->isys);
-	if (ret < 0)
-		dev_err(dev, "ipu fw isys init failed\n");
-
-	dev_dbg(dev, "restart streams\n");
+	dev_dbg(dev, "reset start streams\n");
 
 	for (j = 0; j < csi2_pdata->nports; j++) {
 		for (i = 0; i < NR_OF_CSI2_SRC_PADS; i++) {
@@ -810,7 +788,6 @@ end_of_reset:
 
 	return 0;
 }
-#endif
 #endif
 static void stop_streaming(struct vb2_queue *q)
 {
@@ -878,9 +855,9 @@ static void stop_streaming(struct vb2_queue *q)
 	mutex_unlock(&av->isys->reset_mutex);
 
 	if (av->isys->need_reset) {
-		// if (!stream->nr_streaming)
-			// ipu_isys_reset(av, stream);
-		// else
+		if (!stream->nr_streaming)
+			ipu_isys_reset(av, stream);
+		else
 			av->isys->need_reset = 0;
 	}
 
