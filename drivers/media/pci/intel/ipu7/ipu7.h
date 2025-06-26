@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #ifndef IPU7_H
@@ -202,14 +202,14 @@ struct ipu7_isys_csi2_pdata {
 
 struct ipu7_isys_internal_csi2_pdata {
 	u32 nports;
-	u32 *offsets;
+	u32 const *offsets;
 	u32 gpreg;
 };
 
 #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
 struct ipu7_isys_internal_tpg_pdata {
 	u32 ntpgs;
-	u32 *offsets;
+	u32 const *offsets;
 	u32 *sels;
 };
 #endif

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2022 - 2024 Intel Corporation
+ * Copyright (C) 2022 - 2025 Intel Corporation
  */
 
 #include <linux/bug.h>
@@ -326,7 +326,6 @@ int ipu7_boot_start_fw(const struct ipu7_bus_device *adev)
 	void __iomem *base = adev->isp->base;
 	u32 boot_state, last_boot_state;
 	u32 indices_addr, msg_ver, id;
-	struct ia_gofo_version_s ver;
 	int ret;
 
 	ret = ipu7_boot_cell_init(adev);
@@ -385,9 +384,7 @@ int ipu7_boot_start_fw(const struct ipu7_bus_device *adev)
 	/* Get message version. */
 	msg_ver = read_fw_boot_param(adev,
 				     IA_GOFO_FW_BOOT_MESSAGING_VERSION_ID);
-	memcpy(&ver, &msg_ver, sizeof(msg_ver));
-	dev_dbg(dev, "ipu message version is %d.%d.%d.%d\n",
-		ver.major, ver.minor, ver.subminor, ver.patch);
+	dev_dbg(dev, "ipu message version is 0x%08x\n", msg_ver);
 
 	return 0;
 }

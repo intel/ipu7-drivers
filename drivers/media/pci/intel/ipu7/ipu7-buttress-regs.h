@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2020 - 2024 Intel Corporation
+ * Copyright (C) 2020 - 2025 Intel Corporation
  */
 
 #ifndef IPU7_BUTTRESS_REGS_H
@@ -330,8 +330,6 @@ enum {
 /* IS/PS freq control */
 #define BUTTRESS_IS_FREQ_CTL_RATIO_MASK	0xffU
 #define BUTTRESS_PS_FREQ_CTL_RATIO_MASK	0xffU
-#define BUTTRESS_IS_FREQ_CTL_CDYN_MASK	0xff
-#define BUTTRESS_PS_FREQ_CTL_CDYN_MASK	0xff
 
 #define IPU7_IS_FREQ_MAX		450
 #define IPU7_IS_FREQ_MIN		50

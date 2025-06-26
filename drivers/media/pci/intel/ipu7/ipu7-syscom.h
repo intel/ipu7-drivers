@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #ifndef IPU7_SYSCOM_H
@@ -32,5 +32,4 @@ void ipu7_syscom_put_token(struct ipu7_syscom_context *ctx, int q);
 void *ipu7_syscom_get_token(struct ipu7_syscom_context *ctx, int q);
 struct syscom_queue_params_config *
 ipu7_syscom_get_queue_config(struct syscom_config_s *config);
-
 #endif

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #include <asm/cpu_device_id.h>
@@ -49,8 +49,15 @@
 #define BUTTRESS_TSC_SYNC_TIMEOUT_US		(5 * USEC_PER_MSEC)
 
 #define BUTTRESS_IPC_RESET_RETRY		2000U
-#define BUTTRESS_CSE_IPC_RESET_RETRY		4
-#define BUTTRESS_IPC_CMD_SEND_RETRY		1
+#define BUTTRESS_CSE_IPC_RESET_RETRY		4U
+#define BUTTRESS_IPC_CMD_SEND_RETRY		1U
+
+struct ipu7_ipc_buttress_msg {
+	u32 cmd;
+	u32 expected_resp;
+	bool require_resp;
+	u8 cmd_size;
+};
 
 static const u32 ipu7_adev_irq_mask[2] = {
 	BUTTRESS_IRQ_IS_IRQ,
@@ -211,12 +218,11 @@ static void ipu_buttress_ipc_recv(struct ipu7_device *isp,
 	writel(0, isp->base + ipc->db0_in);
 }
 
-static int ipu_buttress_ipc_send_bulk(struct ipu7_device *isp,
-				      struct ipu7_ipc_buttress_bulk_msg *msgs,
-				      u32 size)
+static int ipu_buttress_ipc_send_msg(struct ipu7_device *isp,
+				     struct ipu7_ipc_buttress_msg *msg)
 {
 	unsigned long tx_timeout_jiffies, rx_timeout_jiffies;
-	unsigned int i, retry = BUTTRESS_IPC_CMD_SEND_RETRY;
+	unsigned int retry = BUTTRESS_IPC_CMD_SEND_RETRY;
 	struct ipu_buttress *b = &isp->buttress;
 	struct ipu_buttress_ipc *ipc = &b->cse;
 	struct device *dev = &isp->pdev->dev;
@@ -235,61 +241,59 @@ static int ipu_buttress_ipc_send_bulk(struct ipu7_device *isp,
 	tx_timeout_jiffies = msecs_to_jiffies(BUTTRESS_IPC_TX_TIMEOUT_MS);
 	rx_timeout_jiffies = msecs_to_jiffies(BUTTRESS_IPC_RX_TIMEOUT_MS);
 
-	for (i = 0; i < size; i++) {
-		reinit_completion(&ipc->send_complete);
-		if (msgs[i].require_resp)
-			reinit_completion(&ipc->recv_complete);
+try:
+	reinit_completion(&ipc->send_complete);
+	if (msg->require_resp)
+		reinit_completion(&ipc->recv_complete);
 
-		dev_dbg(dev, "bulk IPC command: 0x%x\n", msgs[i].cmd);
-		writel(msgs[i].cmd, isp->base + ipc->data0_out);
-		val = BUTTRESS_IU2CSEDB0_BUSY | msgs[i].cmd_size;
-		writel(val, isp->base + ipc->db0_out);
+	dev_dbg(dev, "IPC command: 0x%x\n", msg->cmd);
+	writel(msg->cmd, isp->base + ipc->data0_out);
+	val = BUTTRESS_IU2CSEDB0_BUSY | msg->cmd_size;
+	writel(val, isp->base + ipc->db0_out);
 
-		tout = wait_for_completion_timeout(&ipc->send_complete,
-						   tx_timeout_jiffies);
-		if (!tout) {
-			dev_err(dev, "send IPC response timeout\n");
-			if (!retry--) {
-				ret = -ETIMEDOUT;
-				goto out;
-			}
-
-			/* Try again if CSE is not responding on first try */
-			writel(0, isp->base + ipc->db0_out);
-			i--;
-			continue;
-		}
-
-		retry = BUTTRESS_IPC_CMD_SEND_RETRY;
-
-		if (!msgs[i].require_resp)
-			continue;
-
-		tout = wait_for_completion_timeout(&ipc->recv_complete,
-						   rx_timeout_jiffies);
-		if (!tout) {
-			dev_err(dev, "recv IPC response timeout\n");
+	tout = wait_for_completion_timeout(&ipc->send_complete,
+					   tx_timeout_jiffies);
+	if (!tout) {
+		dev_err(dev, "send IPC response timeout\n");
+		if (!retry--) {
 			ret = -ETIMEDOUT;
 			goto out;
 		}
 
-		if (ipc->nack_mask &&
-		    (ipc->recv_data & ipc->nack_mask) == ipc->nack) {
-			dev_err(dev, "IPC NACK for cmd 0x%x\n", msgs[i].cmd);
-			ret = -EIO;
-			goto out;
-		}
-
-		if (ipc->recv_data != msgs[i].expected_resp) {
-			dev_err(dev,
-				"expected resp: 0x%x, IPC response: 0x%x\n",
-				msgs[i].expected_resp, ipc->recv_data);
-			ret = -EIO;
-			goto out;
-		}
+		/* Try again if CSE is not responding on first try */
+		writel(0, isp->base + ipc->db0_out);
+		goto try;
 	}
 
-	dev_dbg(dev, "bulk IPC commands done\n");
+	if (!msg->require_resp) {
+		ret = -EIO;
+		goto out;
+	}
+
+	tout = wait_for_completion_timeout(&ipc->recv_complete,
+					   rx_timeout_jiffies);
+	if (!tout) {
+		dev_err(dev, "recv IPC response timeout\n");
+		ret = -ETIMEDOUT;
+		goto out;
+	}
+
+	if (ipc->nack_mask &&
+	    (ipc->recv_data & ipc->nack_mask) == ipc->nack) {
+		dev_err(dev, "IPC NACK for cmd 0x%x\n", msg->cmd);
+		ret = -EIO;
+		goto out;
+	}
+
+	if (ipc->recv_data != msg->expected_resp) {
+		dev_err(dev,
+			"expected resp: 0x%x, IPC response: 0x%x\n",
+			msg->expected_resp, ipc->recv_data);
+		ret = -EIO;
+		goto out;
+	}
+
+	dev_dbg(dev, "IPC commands done\n");
 
 out:
 	ipu_buttress_ipc_validity_close(isp, ipc);
@@ -302,14 +306,14 @@ static int ipu_buttress_ipc_send(struct ipu7_device *isp,
 				 u32 ipc_msg, u32 size, bool require_resp,
 				 u32 expected_resp)
 {
-	struct ipu7_ipc_buttress_bulk_msg msg = {
+	struct ipu7_ipc_buttress_msg msg = {
 		.cmd = ipc_msg,
 		.cmd_size = size,
 		.require_resp = require_resp,
 		.expected_resp = expected_resp,
 	};
 
-	return ipu_buttress_ipc_send_bulk(isp, &msg, 1);
+	return ipu_buttress_ipc_send_msg(isp, &msg);
 }
 
 static irqreturn_t ipu_buttress_call_isr(struct ipu7_bus_device *adev)

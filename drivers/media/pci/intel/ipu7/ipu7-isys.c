@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #include <linux/auxiliary_bus.h>
@@ -523,7 +523,6 @@ out_isys_notifier_cleanup:
 out_tpg_unregister_subdevices:
 	isys_tpg_unregister_subdevices(isys);
 #endif
-
 out_csi2_unregister_subdevices:
 	isys_csi2_unregister_subdevices(isys);
 
@@ -588,7 +587,7 @@ static void enable_to_sw_irq(struct ipu7_isys *isys, bool enable)
 	writel(mask, base + offset + TO_SW_IRQ_CNTL_ENABLE);
 }
 
-static void isys_setup_hw(struct ipu7_isys *isys)
+void ipu7_isys_setup_hw(struct ipu7_isys *isys)
 {
 	u32 offset;
 	void __iomem *base = isys->pdata->base;
@@ -637,8 +636,6 @@ static int isys_runtime_pm_resume(struct device *dev)
 	isys->power = 1;
 	spin_unlock_irqrestore(&isys->power_lock, flags);
 
-	isys_setup_hw(isys);
-
 	return 0;
 }
 
@@ -657,10 +654,12 @@ static int isys_runtime_pm_suspend(struct device *dev)
 	isys->power = 0;
 	spin_unlock_irqrestore(&isys->power_lock, flags);
 
-	mutex_lock(&isys->mutex);
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	mutex_lock(&isys->reset_mutex);
 	isys->need_reset = false;
-	mutex_unlock(&isys->mutex);
+	mutex_unlock(&isys->reset_mutex);
 
+#endif
 	cpu_latency_qos_update_request(&isys->pm_qos, PM_QOS_DEFAULT_VALUE);
 
 	ipu7_mmu_hw_cleanup(adev->mmu);
@@ -949,7 +948,6 @@ static int isys_probe(struct auxiliary_device *auxdev,
 
 	dev_set_drvdata(&auxdev->dev, isys);
 
-	isys->line_align = IPU_ISYS_2600_MEM_LINE_ALIGN;
 	isys->icache_prefetch = 0;
 	isys->phy_rext_cal = 0;
 
@@ -961,11 +959,13 @@ static int isys_probe(struct auxiliary_device *auxdev,
 #endif
 
 	cpu_latency_qos_add_request(&isys->pm_qos, PM_QOS_DEFAULT_VALUE);
-	alloc_fw_msg_bufs(isys, 20);
+	ret = alloc_fw_msg_bufs(isys, 20);
+	if (ret < 0)
+		goto out_cleanup_isys;
 
 	ret = ipu7_fw_isys_init(isys);
 	if (ret)
-		goto out_cleanup_mmu;
+		goto out_cleanup_isys;
 
 	ret = isys_register_devices(isys);
 	if (ret)
@@ -987,8 +987,9 @@ out_cleanup:
 	isys_unregister_devices(isys);
 out_cleanup_fw:
 	ipu7_fw_isys_release(isys);
+out_cleanup_isys:
+	cpu_latency_qos_remove_request(&isys->pm_qos);
 
-out_cleanup_mmu:
 	for (unsigned int i = 0; i < IPU_ISYS_MAX_STREAMS; i++)
 		mutex_destroy(&isys->streams[i].mutex);
 

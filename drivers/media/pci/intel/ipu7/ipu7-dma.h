@@ -1,12 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 2013--2024 Intel Corporation */
+/* Copyright (C) 2013--2025 Intel Corporation */
 
 #ifndef IPU7_DMA_H
 #define IPU7_DMA_H
 
 #include <linux/dma-map-ops.h>
 #include <linux/dma-mapping.h>
-#include <linux/iova.h>
 #include <linux/iova.h>
 #include <linux/scatterlist.h>
 #include <linux/types.h>
@@ -44,7 +43,4 @@ int ipu7_dma_map_sgtable(struct ipu7_bus_device *sys, struct sg_table *sgt,
 			 enum dma_data_direction dir, unsigned long attrs);
 void ipu7_dma_unmap_sgtable(struct ipu7_bus_device *sys, struct sg_table *sgt,
 			    enum dma_data_direction dir, unsigned long attrs);
-int ipu7_dma_get_sgtable(struct ipu7_bus_device *sys, struct sg_table *sgt,
-			 void *cpu_addr, dma_addr_t handle, size_t size,
-			 unsigned long attrs);
 #endif /* IPU7_DMA_H */

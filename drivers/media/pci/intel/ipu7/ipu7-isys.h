@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #ifndef IPU7_ISYS_H
@@ -36,8 +36,6 @@ struct dentry;
 
 /* FW support max 16 streams */
 #define IPU_ISYS_MAX_STREAMS		16U
-
-#define IPU_ISYS_2600_MEM_LINE_ALIGN	64U
 
 /*
  * Current message queue configuration. These must be big enough
@@ -80,8 +78,9 @@ struct isys_fw_log {
  * @streams_lock: serialise access to streams
  * @streams: streams per firmware stream ID
  * @syscom: fw communication layer context
- * @line_align: line alignment in memory
+ #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
  * @need_reset: Isys requires d0i0->i3 transition
+ #endif
  * @ref_count: total number of callers fw open
  * @mutex: serialise access isys video open/release related operations
  * @stream_mutex: serialise stream start and stop, queueing requests
@@ -103,9 +102,7 @@ struct ipu7_isys {
 	spinlock_t streams_lock;
 	struct ipu7_isys_stream streams[IPU_ISYS_MAX_STREAMS];
 	int streams_ref_count[IPU_ISYS_MAX_STREAMS];
-	unsigned int line_align;
 	u32 phy_rext_cal;
-	bool need_reset;
 	bool icache_prefetch;
 	bool csi2_cse_ipc_not_supported;
 	unsigned int ref_count;
@@ -136,6 +133,7 @@ struct ipu7_isys {
 	dma_addr_t subsys_config_dma_addr;
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	struct mutex reset_mutex;
+	bool need_reset;
 	bool in_reset;
 	bool in_reset_stop_streaming;
 	bool in_stop_streaming;
@@ -166,8 +164,6 @@ struct sensor_async_sd {
 struct isys_fw_msgs *ipu7_get_fw_msg_buf(struct ipu7_isys_stream *stream);
 void ipu7_put_fw_msg_buf(struct ipu7_isys *isys, uintptr_t data);
 void ipu7_cleanup_fw_msg_bufs(struct ipu7_isys *isys);
-
-extern const struct v4l2_ioctl_ops ipu7_isys_ioctl_ops;
-
 int isys_isr_one(struct ipu7_bus_device *adev);
+void ipu7_isys_setup_hw(struct ipu7_isys *isys);
 #endif /* IPU7_ISYS_H */

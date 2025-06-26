@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #include <linux/bitmap.h>
@@ -386,10 +386,7 @@ static int ipu7_isys_phy_ready(struct ipu7_isys *isys, u32 id)
 		rext = dwc_phy_read(isys, id,
 				    CORE_DIG_IOCTRL_R_AFE_CB_CTRL_2_15) & 0xfU;
 		dev_dbg(dev, "phy %u rext value = %u\n", id, rext);
-		isys->phy_rext_cal = rext;
-
-		if (!isys->phy_rext_cal)
-			isys->phy_rext_cal = 5;
+		isys->phy_rext_cal = (rext ? rext : 5);
 
 		return 0;
 	}
@@ -449,7 +446,9 @@ static const u16 deskew_fine_mem[] = {
 static void ipu7_isys_dphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 				  bool aggregation, u64 mbps)
 {
-	u16 hsrxval0, hsrxval1, hsrxval2;
+	u16 hsrxval0 = 0;
+	u16 hsrxval1 = 0;
+	u16 hsrxval2 = 0;
 	int index;
 	u16 reg;
 	u16 val;
@@ -660,15 +659,8 @@ static void ipu7_isys_dphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 		dwc_phy_write_mask(isys, id, CORE_DIG_COMMON_RW_DESKEW_FINE_MEM,
 				   deskew_fine_mem[i], 0, 15);
 
-	if (mbps <= 1500) {
-		hsrxval0 = 0;
-		hsrxval1 = 0;
-		hsrxval2 = 0;
-	}
-
 	if (mbps > 1500) {
 		hsrxval0 = 4;
-		hsrxval1 = 0;
 		hsrxval2 = 3;
 	}
 
@@ -737,7 +729,7 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 	u16 deass_thresh;
 	u16 delay_thresh;
 	u16 reset_thresh;
-	u16 cap_prog;
+	u16 cap_prog = 6U;
 	u16 reg;
 	u16 val;
 	u32 i;
@@ -860,7 +852,6 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 	for (i = 0; i < trios; i++)
 		dwc_phy_write_mask(isys, id, reg + 0x400 * i, 12, 2, 6);
 
-	cap_prog = 6U;
 	for (i = 0; i < ARRAY_SIZE(table7); i++) {
 		if (mbps >= table7[i].min_mbps && mbps <= table7[i].max_mbps) {
 			cap_prog = table7[i].val;
