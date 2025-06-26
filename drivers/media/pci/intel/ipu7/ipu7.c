@@ -2486,6 +2486,9 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct device *dev = &pdev->dev;
 	void __iomem *isys_base = NULL;
 	void __iomem *psys_base = NULL;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+	void __iomem *const *iomap;
+#endif
 	phys_addr_t phys, pb_phys;
 	struct ipu7_device *isp;
 	u32 is_es;
@@ -2514,6 +2517,23 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	dev_info(dev, "IPU7 PCI BAR0 base %llx BAR2 base %llx\n",
 		 phys, pb_phys);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+	ret = pcim_iomap_regions(pdev, BIT(IPU_PCI_BAR) | BIT(IPU_PCI_PBBAR),
+				 pci_name(pdev));
+	if (ret)
+		return dev_err_probe(dev, ret,
+				     "Failed to I/O memory remapping (%d)\n",
+				     ret);
+
+	iomap = pcim_iomap_table(pdev);
+	if (!iomap)
+		return dev_err_probe(dev, -ENODEV, "Failed to iomap table\n");
+
+	isp->base = iomap[IPU_PCI_BAR];
+	isp->pb_base = iomap[IPU_PCI_PBBAR];
+	dev_info(dev, "IPU7 PCI BAR0 mapped at %p\n BAR2 mapped at %p\n",
+		 isp->base, isp->pb_base);
+#else
 	isp->base = pcim_iomap_region(pdev, IPU_PCI_BAR, IPU_NAME);
 	if (IS_ERR(isp->base))
 		return dev_err_probe(dev, PTR_ERR(isp->base),
@@ -2528,6 +2548,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	dev_info(dev, "IPU7 PCI BAR0 mapped at %p\n BAR2 mapped at %p\n",
 		 isp->base, isp->pb_base);
+#endif
 
 	pci_set_drvdata(pdev, isp);
 	pci_set_master(pdev);
@@ -2730,6 +2751,11 @@ static void ipu7_pci_remove(struct pci_dev *pdev)
 	pm_runtime_forbid(&pdev->dev);
 	pm_runtime_get_noresume(&pdev->dev);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+	pci_release_regions(pdev);
+	pci_disable_device(pdev);
+
+#endif
 	ipu_buttress_exit(isp);
 
 	release_firmware(isp->cpd_fw);
