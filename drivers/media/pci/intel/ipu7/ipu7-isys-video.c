@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #include <linux/align.h>
@@ -93,18 +93,20 @@ const struct ipu7_isys_pixelformat ipu7_isys_pfmts[] = {
 
 static int video_open(struct file *file)
 {
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	struct ipu7_isys_video *av = video_drvdata(file);
 	struct ipu7_isys *isys = av->isys;
 	struct ipu7_bus_device *adev = isys->adev;
 
-	mutex_lock(&isys->mutex);
+	mutex_lock(&isys->reset_mutex);
 	if (isys->need_reset) {
-		mutex_unlock(&isys->mutex);
+		mutex_unlock(&isys->reset_mutex);
 		dev_warn(&adev->auxdev.dev, "isys power cycle required\n");
 		return -EIO;
 	}
-	mutex_unlock(&isys->mutex);
+	mutex_unlock(&isys->reset_mutex);
 
+#endif
 	return v4l2_fh_open(file);
 }
 
@@ -149,8 +151,6 @@ static int ipu7_isys_vidioc_querycap(struct file *file, void *fh,
 
 	strscpy(cap->driver, IPU_ISYS_NAME, sizeof(cap->driver));
 	strscpy(cap->card, av->isys->media_dev.model, sizeof(cap->card));
-	snprintf(cap->bus_info, sizeof(cap->bus_info), "%s",
-		 av->isys->media_dev.bus_info);
 
 	return 0;
 }
@@ -233,7 +233,7 @@ static void ipu7_isys_try_fmt_cap(struct ipu7_isys_video *av, u32 type,
 	else
 		*bytesperline = DIV_ROUND_UP(*width * pfmt->bpp, BITS_PER_BYTE);
 
-	*bytesperline = ALIGN(*bytesperline, av->isys->line_align);
+	*bytesperline = ALIGN(*bytesperline, 64U);
 
 	/*
 	 * (height + 1) * bytesperline due to a hardware issue: the DMA unit
@@ -616,9 +616,8 @@ out_stream_close:
 	tout = wait_for_completion_timeout(&stream->stream_close_completion,
 					   FW_CALL_TIMEOUT_JIFFIES);
 	if (!tout)
-		dev_err(dev, "stream close time out\n");
-	else if (stream->error)
-		dev_err(dev, "stream close error: %d\n", stream->error);
+		dev_err(dev, "stream close time out with error %d\n",
+			stream->error);
 	else
 		dev_dbg(dev, "stream close complete\n");
 
@@ -1074,6 +1073,10 @@ out:
 
 void ipu7_isys_fw_close(struct ipu7_isys *isys)
 {
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	bool need_reset;
+
+#endif
 	mutex_lock(&isys->mutex);
 
 	isys->ref_count--;
@@ -1082,11 +1085,16 @@ void ipu7_isys_fw_close(struct ipu7_isys *isys)
 		ipu7_fw_isys_close(isys);
 
 	mutex_unlock(&isys->mutex);
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 
-	if (isys->need_reset)
+	mutex_lock(&isys->reset_mutex);
+	need_reset = isys->need_reset;
+	mutex_unlock(&isys->reset_mutex);
+	if (need_reset)
 		pm_runtime_put_sync(&isys->adev->auxdev.dev);
 	else
 		pm_runtime_put(&isys->adev->auxdev.dev);
+#endif
 }
 
 int ipu7_isys_setup_video(struct ipu7_isys_video *av,

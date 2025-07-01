@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #include <linux/atomic.h>
@@ -12,6 +12,7 @@
 #include <linux/minmax.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/version.h>
 
 #include <media/media-entity.h>
 #include <media/v4l2-ctrls.h>
@@ -48,6 +49,25 @@ static const u32 csi2_supported_codes[] = {
 	0,
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
+s64 ipu7_isys_csi2_get_link_freq(struct ipu7_isys_csi2 *csi2)
+{
+	struct media_pad *src_pad;
+
+	if (!csi2)
+		return -EINVAL;
+
+	src_pad = media_entity_remote_source_pad_unique(&csi2->asd.sd.entity);
+	if (IS_ERR(src_pad)) {
+		dev_err(&csi2->isys->adev->auxdev.dev,
+			"can't get source pad of %s (%ld)\n",
+			csi2->asd.sd.name, PTR_ERR(src_pad));
+		return PTR_ERR(src_pad);
+	}
+
+	return v4l2_get_link_freq(src_pad, 0, 0);
+}
+#else
 s64 ipu7_isys_csi2_get_link_freq(struct ipu7_isys_csi2 *csi2)
 {
 	struct media_pad *src_pad;
@@ -71,6 +91,7 @@ s64 ipu7_isys_csi2_get_link_freq(struct ipu7_isys_csi2 *csi2)
 
 	return v4l2_get_link_freq(ext_sd->ctrl_handler, 0, 0);
 }
+#endif
 
 static int csi2_subscribe_event(struct v4l2_subdev *sd, struct v4l2_fh *fh,
 				struct v4l2_event_subscription *sub)
@@ -152,24 +173,11 @@ static void ipu7_isys_csi2_disable_stream(struct ipu7_isys_csi2 *csi2)
 {
 	struct ipu7_isys *isys = csi2->isys;
 	void __iomem *isys_base = isys->pdata->base;
-	unsigned int port, nlanes, offset, val;
 
-	port = csi2->port;
-	nlanes = csi2->nlanes;
-
-	csi2_irq_en(csi2, 0);
-
-	offset = IS_IO_GPREGS_BASE;
-	val = readl(isys_base + offset + CSI_PORT_CLK_GATE);
-
-	val &= ~(1U << port);
-	if (port == 0U && nlanes == 4U && !is_ipu7(isys->adev->isp->hw_ver))
-		val &= ~BIT(1);
-	writel(val, isys_base + offset + CSI_PORT_CLK_GATE);
-
-	/* power down */
 	ipu7_isys_csi_phy_powerdown(csi2);
-	writel(0x4, isys_base + offset + CLK_DIV_FACTOR_APB_CLK);
+
+	writel(0x4, isys_base + IS_IO_GPREGS_BASE + CLK_DIV_FACTOR_APB_CLK);
+	csi2_irq_en(csi2, 0);
 }
 
 static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2)
@@ -177,24 +185,19 @@ static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2)
 	struct ipu7_isys *isys = csi2->isys;
 	struct device *dev = &isys->adev->auxdev.dev;
 	void __iomem *isys_base = isys->pdata->base;
-	unsigned int port, nlanes, offset, val;
+	unsigned int port, nlanes, offset;
 	int ret;
 
 	port = csi2->port;
 	nlanes = csi2->nlanes;
 
 	offset = IS_IO_GPREGS_BASE;
-	/* port AB support aggregation, configure 2 ports */
-	val = readl(isys_base + offset + CSI_PORT_CLK_GATE);
-
-	writel(val | (0x3U << (port & 0x2U)),
-	       isys_base + offset + CSI_PORT_CLK_GATE);
 	writel(0x2, isys_base + offset + CLK_DIV_FACTOR_APB_CLK);
 	dev_dbg(dev, "port %u CLK_GATE = 0x%04x DIV_FACTOR_APB_CLK=0x%04x\n",
 		port, readl(isys_base + offset + CSI_PORT_CLK_GATE),
 		readl(isys_base + offset + CLK_DIV_FACTOR_APB_CLK));
 	if (port == 0U && nlanes == 4U && !is_ipu7(isys->adev->isp->hw_ver)) {
-		dev_info(dev, "CSI port %u in aggregation mode\n", port);
+		dev_dbg(dev, "CSI port %u in aggregation mode\n", port);
 		writel(0x1, isys_base + offset + CSI_PORTAB_AGGREGATION);
 	}
 
@@ -203,7 +206,6 @@ static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2)
 	writel(CSI_SENSOR_INPUT, isys_base + offset + CSI2_ADPL_INPUT_MODE);
 	writel(1, isys_base + offset + CSI2_ADPL_CSI_RX_ERR_IRQ_CLEAR_EN);
 
-	/* Enable DPHY power */
 	ret = ipu7_isys_csi_phy_powerup(csi2);
 	if (ret) {
 		dev_err(dev, "CSI-%d PHY power up failed %d\n", port, ret);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #ifndef IPU7_BUTTRESS_H
@@ -47,13 +47,6 @@ struct ipu_buttress {
 	u8 psys_force_ratio;
 	bool force_suspend;
 	u32 ref_clk;
-};
-
-struct ipu7_ipc_buttress_bulk_msg {
-	u32 cmd;
-	u32 expected_resp;
-	bool require_resp;
-	u8 cmd_size;
 };
 
 int ipu_buttress_ipc_reset(struct ipu7_device *isp,

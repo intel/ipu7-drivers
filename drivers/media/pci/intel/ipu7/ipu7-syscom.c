@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #include <linux/export.h>
@@ -89,4 +89,3 @@ EXPORT_SYMBOL_NS_GPL(ipu7_syscom_get_queue_config, "INTEL_IPU7");
 #else
 EXPORT_SYMBOL_NS_GPL(ipu7_syscom_get_queue_config, INTEL_IPU7);
 #endif
-

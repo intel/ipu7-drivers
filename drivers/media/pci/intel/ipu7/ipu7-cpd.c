@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2015 - 2024 Intel Corporation
+ * Copyright (C) 2015 - 2025 Intel Corporation
  */
 
 #include <linux/device.h>
@@ -23,7 +23,7 @@
 
 #define CPD_MANIFEST_IDX	0
 #define CPD_BINARY_START_IDX	1U
-#define CPD_METADATA_START_IDX	2
+#define CPD_METADATA_START_IDX	2U
 #define CPD_BINARY_NUM		2U /* ISYS + PSYS */
 /*
  * Entries include:
@@ -35,8 +35,53 @@
 
 #define CPD_METADATA_ATTR	0xa
 #define CPD_METADATA_IPL	0x1c
-#define ONLINE_METADATA_SIZE	128
+#define ONLINE_METADATA_SIZE	128U
 #define ONLINE_METADATA_LINES	6U
+
+struct ipu7_cpd_hdr {
+	u32 hdr_mark;
+	u32 ent_cnt;
+	u8 hdr_ver;
+	u8 ent_ver;
+	u8 hdr_len;
+	u8 rsvd;
+	u8 partition_name[4];
+	u32 crc32;
+} __packed;
+
+struct ipu7_cpd_ent {
+	u8 name[12];
+	u32 offset;
+	u32 len;
+	u8 rsvd[4];
+} __packed;
+
+struct ipu7_cpd_metadata_hdr {
+	u32 type;
+	u32 len;
+} __packed;
+
+struct ipu7_cpd_metadata_attr {
+	struct ipu7_cpd_metadata_hdr hdr;
+	u8 compression_type;
+	u8 encryption_type;
+	u8 rsvd[2];
+	u32 uncompressed_size;
+	u32 compressed_size;
+	u32 module_id;
+	u8 hash[48];
+} __packed;
+
+struct ipu7_cpd_metadata_ipl {
+	struct ipu7_cpd_metadata_hdr hdr;
+	u32 param[4];
+	u8 rsvd[8];
+} __packed;
+
+struct ipu7_cpd_metadata {
+	struct ipu7_cpd_metadata_attr attr;
+	struct ipu7_cpd_metadata_ipl ipl;
+} __packed;
 
 static inline struct ipu7_cpd_ent *ipu7_cpd_get_entry(const void *cpd, int idx)
 {

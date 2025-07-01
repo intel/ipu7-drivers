@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2021 - 2024 Intel Corporation
+ * Copyright (C) 2021 - 2025 Intel Corporation
  */
 
 #ifndef IPU7_FW_CONFIG_ABI_H

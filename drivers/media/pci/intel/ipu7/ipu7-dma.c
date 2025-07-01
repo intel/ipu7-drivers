@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013 - 2024 Intel Corporation
+ * Copyright (C) 2013 - 2025 Intel Corporation
  */
 
 #include <linux/cacheflush.h>
@@ -185,7 +185,7 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
 	count = PHYS_PFN(size);
 
 	iova = alloc_iova(&mmu->dmap->iovad, count,
-			  PHYS_PFN(dma_get_mask(dev)), 0);
+			  PHYS_PFN(mmu->dmap->mmu_info->aperture_end), 0);
 	if (!iova)
 		goto out_kfree;
 
@@ -439,7 +439,8 @@ int ipu7_dma_map_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 		dev_dbg(dev, "iova[%lx:%lx] reserved for FW code.\n", lo, hi);
 	} else {
 		iova = alloc_iova(&mmu->dmap->iovad, npages,
-				  PHYS_PFN(dma_get_mask(dev)), 0);
+				  PHYS_PFN(mmu->dmap->mmu_info->aperture_end),
+				  0);
 		if (!iova)
 			return 0;
 	}
@@ -511,36 +512,3 @@ EXPORT_SYMBOL_NS_GPL(ipu7_dma_unmap_sgtable, "INTEL_IPU7");
 #else
 EXPORT_SYMBOL_NS_GPL(ipu7_dma_unmap_sgtable, INTEL_IPU7);
 #endif
-
-/*
- * Create scatter-list for the already allocated DMA buffer
- */
-int ipu7_dma_get_sgtable(struct ipu7_bus_device *sys, struct sg_table *sgt,
-			 void *cpu_addr, dma_addr_t handle, size_t size,
-			 unsigned long attrs)
-{
-	struct device *dev = &sys->auxdev.dev;
-	struct ipu7_mmu *mmu = sys->mmu;
-	struct vm_info *info;
-	int n_pages;
-	int ret = 0;
-
-	info = get_vm_info(mmu, handle);
-	if (!info)
-		return -EFAULT;
-
-	if (!info->vaddr)
-		return -EFAULT;
-
-	if (WARN_ON(!info->pages))
-		return -ENOMEM;
-
-	n_pages = PFN_UP(size);
-
-	ret = sg_alloc_table_from_pages(sgt, info->pages, n_pages, 0, size,
-					GFP_KERNEL);
-	if (ret)
-		dev_warn(dev, "get sgt table failed\n");
-
-	return ret;
-}
