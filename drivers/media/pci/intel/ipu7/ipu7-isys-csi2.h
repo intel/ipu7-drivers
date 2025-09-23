@@ -16,23 +16,14 @@ struct ipu7_isys;
 struct ipu7_isys_csi2_pdata;
 struct ipu7_isys_stream;
 
-#define NR_OF_CSI2_VC		16U
-#define INVALID_VC_ID		-1
-#define NR_OF_CSI2_SINK_PADS	1U
-#define CSI2_PAD_SINK		0U
-#define NR_OF_CSI2_SRC_PADS	8U
-#define CSI2_PAD_SRC		1U
-#define NR_OF_CSI2_PADS		(NR_OF_CSI2_SINK_PADS + NR_OF_CSI2_SRC_PADS)
-
-#define CSI2_CSI_RX_DLY_CNT_TERMEN_CLANE_A		0
-#define CSI2_CSI_RX_DLY_CNT_TERMEN_CLANE_B		0
-#define CSI2_CSI_RX_DLY_CNT_SETTLE_CLANE_A		95
-#define CSI2_CSI_RX_DLY_CNT_SETTLE_CLANE_B		-8
-
-#define CSI2_CSI_RX_DLY_CNT_TERMEN_DLANE_A		0
-#define CSI2_CSI_RX_DLY_CNT_TERMEN_DLANE_B		0
-#define CSI2_CSI_RX_DLY_CNT_SETTLE_DLANE_A		85
-#define CSI2_CSI_RX_DLY_CNT_SETTLE_DLANE_B		-2
+#define IPU7_NR_OF_CSI2_VC		16U
+#define INVALID_VC_ID			-1
+#define IPU7_NR_OF_CSI2_SINK_PADS	1U
+#define IPU7_CSI2_PAD_SINK		0U
+#define IPU7_NR_OF_CSI2_SRC_PADS	8U
+#define IPU7_CSI2_PAD_SRC		1U
+#define IPU7_NR_OF_CSI2_PADS		(IPU7_NR_OF_CSI2_SINK_PADS + \
+					 IPU7_NR_OF_CSI2_SRC_PADS)
 
 /*
  * struct ipu7_isys_csi2
@@ -43,7 +34,7 @@ struct ipu7_isys_csi2 {
 	struct ipu7_isys_subdev asd;
 	struct ipu7_isys_csi2_pdata *pdata;
 	struct ipu7_isys *isys;
-	struct ipu7_isys_video av[NR_OF_CSI2_SRC_PADS];
+	struct ipu7_isys_video av[IPU7_NR_OF_CSI2_SRC_PADS];
 
 	void __iomem *base;
 	u32 receiver_errors;

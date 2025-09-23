@@ -33,11 +33,6 @@ struct ia_gofo_logger_config {
 	u32 hw_printf_buffer_size_bytes;
 };
 
-static inline void ia_gofo_logger_config_abi_test_func(void)
-{
-	CHECK_ALIGN32(struct ia_gofo_logger_config);
-}
-
 #pragma pack(push, 1)
 
 #define IA_GOFO_BUTTRESS_FW_BOOT_PARAMS_MAX_REG_IDX_PER_APP \
@@ -75,7 +70,7 @@ enum ia_gofo_buttress_reg_id {
 
 enum ia_gofo_boot_uc_tile_frequency_units {
 	IA_GOFO_FW_BOOT_UC_FREQUENCY_UNITS_MHZ = 0,
-	IA_GOFO_FW_BOOT_UC_FREQUENCY_UNITS_KHZ = 1,
+	IA_GOFO_FW_BOOT_UC_FREQUENCY_UNITS_HZ = 1,
 	IA_GOFO_FW_BOOT_UC_FREQUENCY_UNITS_N
 };
 
@@ -108,12 +103,6 @@ struct ia_gofo_secondary_boot_config {
 };
 
 #pragma pack(pop)
-
-static inline void ia_gofo_boot_config_abi_test_func(void)
-{
-	CHECK_ALIGN32(struct ia_gofo_boot_config);
-	CHECK_ALIGN32(struct ia_gofo_secondary_boot_config);
-}
 
 #define IA_GOFO_WDT_TIMEOUT_ERR			0xdead0401U
 #define IA_GOFO_MEM_FATAL_DME_ERR		0xdead0801U
@@ -155,10 +144,20 @@ enum ia_gofo_boot_state {
 	IA_GOFO_MEM_UNCORRECTABLE_CACHE_ERR,
 	IA_GOFO_FW_BOOT_STATE_CRIT_DOUBLE_EXCEPTION =
 	IA_GOFO_DOUBLE_EXCEPTION_ERR,
+	IA_GOFO_FW_BOOT_STATE_CRIT_BIST_DMEM_FAULT_DETECTION_ERR =
+	IA_GOFO_BIST_DMEM_FAULT_DETECTION_ERR,
+	IA_GOFO_FW_BOOT_STATE_CRIT_DATA_INTEGRITY_FAILURE = 0xdead1010U,
+	IA_GOFO_FW_BOOT_STATE_CRIT_STACK_CHK_FAILURE = 0xdead1011U,
+	IA_GOFO_FW_BOOT_STATE_CRIT_SYSCOM_CONTEXT_INTEGRITY_FAILURE =
+	0xdead1012U,
+	IA_GOFO_FW_BOOT_STATE_CRIT_MPU_CONFIG_FAILURE = 0xdead1013U,
+	IA_GOFO_FW_BOOT_STATE_CRIT_SHARED_BUFFER_FAILURE = 0xdead1014U,
+	IA_GOFO_FW_BOOT_STATE_CRIT_CMEM_FAILURE = 0xdead1015U,
 	IA_GOFO_FW_BOOT_STATE_SHUTDOWN_CMD = 0x57a7f001U,
 	IA_GOFO_FW_BOOT_STATE_SHUTDOWN_START = 0x57a7e200U,
 	IA_GOFO_FW_BOOT_STATE_INACTIVE = 0x57a7e300U,
-	IA_GOFO_FW_BOOT_HW_CMD_ACK_TIMEOUT = 0x57a7e400U
+	IA_GOFO_FW_BOOT_HW_CMD_ACK_TIMEOUT = 0x57a7e400U,
+	IA_GOFO_FW_BOOT_SYSTEM_CYCLES_ERROR = 0x57a7e500U
 };
 
 #endif
