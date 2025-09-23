@@ -29,8 +29,6 @@ struct ipu7_isys_subdev {
 
 #define to_ipu7_isys_subdev(__sd)			\
 	container_of(__sd, struct ipu7_isys_subdev, sd)
-
-unsigned int ipu7_isys_mbus_code_to_bpp(u32 code);
 unsigned int ipu7_isys_mbus_code_to_mipi(u32 code);
 bool ipu7_isys_is_bayer_format(u32 code);
 u32 ipu7_isys_convert_bayer_order(u32 code, int x, int y);
