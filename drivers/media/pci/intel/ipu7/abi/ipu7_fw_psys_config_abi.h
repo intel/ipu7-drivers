@@ -17,6 +17,8 @@ struct ipu7_psys_config {
 	u32 compression_support_enabled;
 	struct ia_gofo_logger_config logger_config;
 	struct ipu7_wdt_abi wdt_config;
+	u8 ipu_psys_debug_bitmask;
+	u8 padding[3];
 };
 
 #endif

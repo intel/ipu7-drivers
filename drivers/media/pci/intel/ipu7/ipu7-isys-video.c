@@ -118,7 +118,7 @@ static int video_release(struct file *file)
 	dev_dbg(&av->isys->adev->auxdev.dev,
 		"release: %s: enter\n", av->vdev.name);
 	mutex_lock(&av->isys->reset_mutex);
-	while (av->isys->in_reset) {
+	while (av->isys->state & RESET_STATE_IN_RESET) {
 		mutex_unlock(&av->isys->reset_mutex);
 		dev_dbg(&av->isys->adev->auxdev.dev,
 			"release: %s: wait for reset\n", av->vdev.name);
@@ -705,7 +705,7 @@ int ipu7_isys_video_prepare_stream(struct ipu7_isys_video *av,
 
 	stream->nr_queues = nr_queues;
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
-	if (av->isys->in_reset) {
+	if (av->isys->state & RESET_STATE_IN_RESET) {
 		atomic_set(&stream->sequence, stream->last_sequence);
 		dev_dbg(&av->isys->adev->auxdev.dev,
 			"atomic_set : stream->last_sequence = %d\n",
@@ -1071,12 +1071,37 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 void ipu7_isys_fw_close(struct ipu7_isys *isys)
 {
-#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
-	bool need_reset;
+	int ret = 0;
 
-#endif
+	mutex_lock(&isys->mutex);
+	isys->ref_count--;
+	if (!isys->ref_count) {
+		/* need reset when fw close is abnormal */
+		ret = ipu7_fw_isys_close(isys);
+		if (ret) {
+			mutex_lock(&isys->reset_mutex);
+			isys->need_reset = true;
+			mutex_unlock(&isys->reset_mutex);
+		}
+	}
+
+	mutex_unlock(&isys->mutex);
+
+	mutex_lock(&isys->reset_mutex);
+	if (isys->need_reset) {
+		mutex_unlock(&isys->reset_mutex);
+		pm_runtime_put_sync(&isys->adev->auxdev.dev);
+	} else {
+		mutex_unlock(&isys->reset_mutex);
+		pm_runtime_put(&isys->adev->auxdev.dev);
+	}
+}
+#else
+void ipu7_isys_fw_close(struct ipu7_isys *isys)
+{
 	mutex_lock(&isys->mutex);
 
 	isys->ref_count--;
@@ -1085,17 +1110,9 @@ void ipu7_isys_fw_close(struct ipu7_isys *isys)
 		ipu7_fw_isys_close(isys);
 
 	mutex_unlock(&isys->mutex);
-#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
-
-	mutex_lock(&isys->reset_mutex);
-	need_reset = isys->need_reset;
-	mutex_unlock(&isys->reset_mutex);
-	if (need_reset)
-		pm_runtime_put_sync(&isys->adev->auxdev.dev);
-	else
-		pm_runtime_put(&isys->adev->auxdev.dev);
-#endif
+	pm_runtime_put(&isys->adev->auxdev.dev);
 }
+#endif
 
 int ipu7_isys_setup_video(struct ipu7_isys_video *av,
 			  struct media_entity **source_entity, int *nr_queues)
