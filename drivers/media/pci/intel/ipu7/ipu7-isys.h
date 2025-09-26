@@ -51,6 +51,11 @@ struct dentry;
 #define IPU_ISYS_MAX_WIDTH		8160U
 #define IPU_ISYS_MAX_HEIGHT		8190U
 
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+#define RESET_STATE_IN_RESET                 1U
+#define RESET_STATE_IN_STOP_STREAMING        2U
+
+#endif
 #define FW_CALL_TIMEOUT_JIFFIES		\
 	msecs_to_jiffies(IPU_LIB_CALL_TIMEOUT_MS)
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
@@ -134,9 +139,7 @@ struct ipu7_isys {
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	struct mutex reset_mutex;
 	bool need_reset;
-	bool in_reset;
-	bool in_reset_stop_streaming;
-	bool in_stop_streaming;
+	int state;
 #endif
 };
 
@@ -154,6 +157,21 @@ struct ipu7_isys_csi2_config {
 	unsigned int nlanes;
 	unsigned int port;
 	enum v4l2_mbus_type bus_type;
+};
+
+struct ipu7_isys_subdev_i2c_info {
+	struct i2c_board_info board_info;
+	int i2c_adapter_id;
+	char i2c_adapter_bdf[32];
+};
+
+struct ipu7_isys_subdev_info {
+	struct ipu7_isys_csi2_config *csi2;
+	struct ipu7_isys_subdev_i2c_info i2c;
+};
+
+struct ipu7_isys_subdev_pdata {
+	struct ipu7_isys_subdev_info **subdevs;
 };
 
 struct sensor_async_sd {

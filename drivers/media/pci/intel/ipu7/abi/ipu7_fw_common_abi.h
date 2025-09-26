@@ -212,7 +212,8 @@ static inline void ia_gofo_msg_indirect_test_func(void)
 struct ia_gofo_msg_log_info {
 	u16 log_counter;
 	u8 msg_parameter_types;
-	u8 is_out_of_order;
+	/* [0:0] is_out_of_order, [1:3] logger_channel, [4:7] reserved */
+	u8 logger_opts;
 	u32 fmt_id;
 	u32 params[IA_GOFO_MSG_LOG_MAX_PARAMS];
 };
