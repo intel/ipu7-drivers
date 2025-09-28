@@ -531,7 +531,7 @@ static void return_buffers(struct ipu7_isys_queue *aq,
 	 */
 	while (!list_empty(&aq->active)) {
 		ib = list_last_entry(&aq->active, struct ipu7_isys_buffer,
-				      head);
+				     head);
 		vb = ipu7_isys_buffer_to_vb2_buffer(ib);
 
 		list_del(&ib->head);
@@ -547,7 +547,7 @@ static void return_buffers(struct ipu7_isys_queue *aq,
 
 	while (!list_empty(&aq->incoming)) {
 		ib = list_last_entry(&aq->incoming, struct ipu7_isys_buffer,
-				      head);
+				     head);
 		vb = ipu7_isys_buffer_to_vb2_buffer(ib);
 		list_del(&ib->head);
 		spin_unlock_irqrestore(&aq->lock, flags);
@@ -692,7 +692,7 @@ static void reset_stop_streaming(struct ipu7_isys_video *av)
 	spin_lock_irqsave(&aq->lock, flags);
 	while (!list_empty(&aq->active)) {
 		ib = list_last_entry(&aq->active, struct ipu7_isys_buffer,
-				      head);
+				     head);
 		vb = ipu7_isys_buffer_to_vb2_buffer(ib);
 
 		list_del(&ib->head);
@@ -838,7 +838,7 @@ static int ipu_isys_reset(struct ipu7_isys_video *self_av,
 
 	dev_dbg(dev, "reset stop streams\n");
 	for (i = 0; i < csi2_pdata->nports; i++) {
-		for (j = 0; j < NR_OF_CSI2_SRC_PADS; j++) {
+		for (j = 0; j < IPU7_NR_OF_CSI2_SRC_PADS; j++) {
 			av = &isys->csi2[i].av[j];
 			if (av == self_av)
 				continue;
@@ -864,7 +864,7 @@ static int ipu_isys_reset(struct ipu7_isys_video *self_av,
 	dev_dbg(dev, "reset start streams\n");
 
 	for (j = 0; j < csi2_pdata->nports; j++) {
-		for (i = 0; i < NR_OF_CSI2_SRC_PADS; i++) {
+		for (i = 0; i < IPU7_NR_OF_CSI2_SRC_PADS; i++) {
 			av = &isys->csi2[j].av[i];
 			if (!av->reset)
 				continue;

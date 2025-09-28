@@ -38,12 +38,6 @@ syscom_config_get_queue_configs_const(const struct syscom_config_s *config)
 	return (const struct syscom_queue_params_config *)(&config[1]);
 }
 
-static inline void syscom_abi_test_func(void)
-{
-	CHECK_ALIGN32(struct syscom_queue_params_config);
-	CHECK_ALIGN32(struct syscom_config_s);
-}
-
 #pragma pack(push, 1)
 struct syscom_queue_indices_s {
 	u32 read_index;
@@ -51,10 +45,5 @@ struct syscom_queue_indices_s {
 };
 
 #pragma pack(pop)
-
-static inline void syscom_queue_abi_test_func(void)
-{
-	CHECK_ALIGN64(struct syscom_queue_indices_s);
-}
 
 #endif

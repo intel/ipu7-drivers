@@ -39,6 +39,39 @@ static const u32 tpg_supported_codes[] = {
 
 #define IPU_ISYS_FREQ		533000000UL
 
+static u32 isys_mbus_code_to_bpp(u32 code)
+{
+	switch (code) {
+	case MEDIA_BUS_FMT_RGB888_1X24:
+		return 24;
+	case MEDIA_BUS_FMT_YUYV10_1X20:
+		return 20;
+	case MEDIA_BUS_FMT_Y10_1X10:
+	case MEDIA_BUS_FMT_RGB565_1X16:
+	case MEDIA_BUS_FMT_UYVY8_1X16:
+	case MEDIA_BUS_FMT_YUYV8_1X16:
+		return 16;
+	case MEDIA_BUS_FMT_SBGGR12_1X12:
+	case MEDIA_BUS_FMT_SGBRG12_1X12:
+	case MEDIA_BUS_FMT_SGRBG12_1X12:
+	case MEDIA_BUS_FMT_SRGGB12_1X12:
+		return 12;
+	case MEDIA_BUS_FMT_SBGGR10_1X10:
+	case MEDIA_BUS_FMT_SGBRG10_1X10:
+	case MEDIA_BUS_FMT_SGRBG10_1X10:
+	case MEDIA_BUS_FMT_SRGGB10_1X10:
+		return 10;
+	case MEDIA_BUS_FMT_SBGGR8_1X8:
+	case MEDIA_BUS_FMT_SGBRG8_1X8:
+	case MEDIA_BUS_FMT_SGRBG8_1X8:
+	case MEDIA_BUS_FMT_SRGGB8_1X8:
+		return 8;
+	default:
+		WARN_ON(1);
+		return 0;
+	}
+}
+
 static const struct v4l2_subdev_video_ops tpg_sd_video_ops = {
 	.s_stream = tpg_set_stream,
 };
@@ -337,7 +370,10 @@ static void tpg_get_timing(const struct ipu7_isys_tpg *tpg, u32 *dto,
 	height = format.height;
 	code = format.code;
 
-	bpp = ipu7_isys_mbus_code_to_bpp(code);
+	bpp = isys_mbus_code_to_bpp(code);
+	if (!bpp)
+		return;
+
 	dev_dbg(dev, "MG%d code = 0x%x bpp = %u\n", tpg->index, code, bpp);
 	bits_per_line = width * bpp * TPG_BLANK_RATIO;
 
@@ -410,7 +446,9 @@ static int tpg_start_stream(const struct ipu7_isys_tpg *tpg)
 	code = format.code;
 	dev_dbg(dev, "MG%d code: 0x%x resolution: %ux%u\n",
 		tpg->index, code, width, height);
-	bpp = ipu7_isys_mbus_code_to_bpp(code);
+	bpp = isys_mbus_code_to_bpp(code);
+	if (!bpp)
+		return -EINVAL;
 
 	csi_port = tpg->index;
 	if (csi_port >= 4)

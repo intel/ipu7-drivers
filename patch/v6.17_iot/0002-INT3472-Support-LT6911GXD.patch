@@ -1,0 +1,58 @@
+From 0bd06fd0601c1a854afb09f7876f79b92e9af70e Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Mon, 8 Sep 2025 15:41:24 +0800
+Subject: [PATCH] INT3472: Support LT6911GXD
+
+Signed-off-by: linya14x <linx.yang@intel.com>
+---
+ drivers/platform/x86/intel/int3472/discrete.c | 7 ++++++-
+ include/linux/platform_data/x86/int3472.h     | 1 +
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/platform/x86/intel/int3472/discrete.c b/drivers/platform/x86/intel/int3472/discrete.c
+index 4c0aed6e62..cdbb3a7b16 100644
+--- a/drivers/platform/x86/intel/int3472/discrete.c
++++ b/drivers/platform/x86/intel/int3472/discrete.c
+@@ -177,6 +177,10 @@ static void int3472_get_con_id_and_polarity(struct int3472_discrete_device *int3
+ 	}
+
+ 	switch (*type) {
++	case INT3472_GPIO_TYPE_HOTPLUG_DETECT:
++		*con_id = "hpd";
++		*gpio_flags = GPIO_ACTIVE_HIGH;
++		break;
+ 	case INT3472_GPIO_TYPE_RESET:
+ 		*con_id = "reset";
+ 		*gpio_flags = GPIO_ACTIVE_LOW;
+@@ -292,6 +296,7 @@ static int skl_int3472_handle_gpio_resources(struct acpi_resource *ares,
+ 	switch (type) {
+ 	case INT3472_GPIO_TYPE_RESET:
+ 	case INT3472_GPIO_TYPE_POWERDOWN:
++	case INT3472_GPIO_TYPE_HOTPLUG_DETECT:
+ 		ret = skl_int3472_map_gpio_to_sensor(int3472, agpio, con_id, gpio_flags);
+		if (ret)
+ 			err_msg = "Failed to map GPIO pin to sensor\n";
+@@ -430,7 +435,7 @@ static int skl_int3472_discrete_probe(struct platform_device *pdev)
+ 		return ret;
+ 	}
+
+-	if (cldb.control_logic_type != 1) {
++	if (cldb.control_logic_type != 1 && cldb.control_logic_type != 5) {
+ 		dev_err(&pdev->dev, "Unsupported control logic type %u\n",
+ 			cldb.control_logic_type);
+ 		return -EINVAL;
+diff --git a/include/linux/platform_data/x86/int3472.h b/include/linux/platform_data/x86/int3472.h
+index 78276a11c4..1571e9157f 100644
+--- a/include/linux/platform_data/x86/int3472.h
++++ b/include/linux/platform_data/x86/int3472.h
+@@ -27,6 +27,7 @@
+ #define INT3472_GPIO_TYPE_CLK_ENABLE				0x0c
+ #define INT3472_GPIO_TYPE_PRIVACY_LED				0x0d
+ #define INT3472_GPIO_TYPE_HANDSHAKE				0x12
++#define INT3472_GPIO_TYPE_HOTPLUG_DETECT			0x13
+
+ #define INT3472_PDEV_MAX_NAME_LEN				23
+ #define INT3472_MAX_SENSOR_GPIOS				3
+--
+2.43.0
+

@@ -8,39 +8,6 @@
 
 #include <linux/types.h>
 
-#define CHECK_SIZE_ALIGNMENT(struct_type, alignment) do { \
-	const u8 arr[((sizeof(struct_type) % (alignment)) == 0U) ? \
-			  1 : -1]; (void)arr;\
-	} while (false)
-
-#define CHECK_ALIGN16(struct_type) \
-	CHECK_SIZE_ALIGNMENT(struct_type, sizeof(u16))
-#define CHECK_ALIGN32(struct_type) \
-	CHECK_SIZE_ALIGNMENT(struct_type, sizeof(u32))
-#define CHECK_ALIGN64(struct_type) \
-	CHECK_SIZE_ALIGNMENT(struct_type, sizeof(u64))
-
-#define IA_GOFO_CL_SIZE		(64U)
-
-#define CHECK_ALIGN_CL(struct_type) \
-	CHECK_SIZE_ALIGNMENT(struct_type, IA_GOFO_CL_SIZE)
-
-#define IA_GOFO_PAGE_SIZE	(4096U)
-#define IA_GOFO_SRAM_PAGE_SIZE	(256U)
-
-#define CHECK_ALIGN_PAGE(struct_type) \
-	CHECK_SIZE_ALIGNMENT(struct_type, IA_GOFO_PAGE_SIZE)
-
-#define CHECK_EQUAL(lval, rval) do { \
-	const u8 arr[((lval) == (rval)) ? 1 : -1]; (void)arr;\
-	} while (false)
-
-#define CHECK_SMALLER_OR_EQUAL(lval, rval) do { \
-	const u8 arr[((lval) <= (rval)) ? 1 : -1]; (void)arr;\
-	} while (false)
-
-#define CHECK_SIZE(struct_type, size)	CHECK_EQUAL(sizeof(struct_type), size)
-
 #pragma pack(push, 1)
 typedef u32	ia_gofo_addr_t;
 
@@ -68,12 +35,6 @@ struct ia_gofo_msg_version_list {
 
 #pragma pack(pop)
 
-static inline void ia_gofo_common_abi_test_func(void)
-{
-	CHECK_ALIGN32(struct ia_gofo_version_s);
-	CHECK_ALIGN32(struct ia_gofo_msg_version_list);
-}
-
 #define TLV_TYPE_PADDING		(0U)
 
 #pragma pack(push, 1)
@@ -94,12 +55,6 @@ struct ia_gofo_tlv_list {
 #define TLV_MSG_ALIGNMENT	((u32)sizeof(u64))
 #define TLV_LIST_ALIGNMENT	TLV_ITEM_ALIGNMENT
 #pragma pack(pop)
-
-static inline void ia_gofo_msg_tlv_test_func(void)
-{
-	CHECK_ALIGN16(struct ia_gofo_tlv_header);
-	CHECK_ALIGN32(struct ia_gofo_tlv_list);
-}
 
 #define IA_GOFO_MODULO(dividend, divisor) ((dividend) % (divisor))
 
@@ -123,11 +78,6 @@ struct ia_gofo_msg_err {
 #define IA_GOFO_MSG_ERR_GROUP_INTERNAL_START	(IA_GOFO_MSG_ERR_GROUP_MAX + 1U)
 #define IA_GOFO_MSG_ERR_GROUP_RESERVED	IA_GOFO_MSG_ERR_GROUP_UNSPECIFIED
 #define IA_GOFO_MSG_ERR_GROUP_GENERAL		1
-
-static inline void ia_gofo_msg_err_test_func(void)
-{
-	CHECK_ALIGN64(struct ia_gofo_msg_err);
-}
 
 enum ia_gofo_msg_err_general {
 	IA_GOFO_MSG_ERR_GENERAL_OK = IA_GOFO_MSG_ERR_OK,
@@ -165,13 +115,6 @@ struct ia_gofo_msg_general_err {
 
 #pragma pack(pop)
 
-static inline void ia_gofo_msg_header_test_func(void)
-{
-	CHECK_ALIGN64(struct ia_gofo_msg_header);
-	CHECK_ALIGN64(struct ia_gofo_msg_header_ack);
-	CHECK_ALIGN64(struct ia_gofo_msg_general_err);
-}
-
 #pragma pack(push, 1)
 enum ia_gofo_msg_link_streaming_mode {
 	IA_GOFO_MSG_LINK_STREAMING_MODE_SOFF = 0,
@@ -196,11 +139,6 @@ struct ia_gofo_msg_indirect {
 };
 
 #pragma pack(pop)
-
-static inline void ia_gofo_msg_indirect_test_func(void)
-{
-	CHECK_ALIGN64(struct ia_gofo_msg_indirect);
-}
 
 #pragma pack(push, 1)
 #define IA_GOFO_MSG_LOG_MAX_PARAMS	(4U)
@@ -229,13 +167,6 @@ struct ia_gofo_msg_log {
 };
 
 #pragma pack(pop)
-
-static inline void ia_gofo_msg_log_test_func(void)
-{
-	CHECK_ALIGN64(struct ia_gofo_msg_log);
-	CHECK_ALIGN64(struct ia_gofo_msg_log_info);
-	CHECK_ALIGN64(struct ia_gofo_msg_log_info_ts);
-}
 
 #define IA_GOFO_MSG_ABI_OUT_ACK_QUEUE_ID	(0U)
 #define IA_GOFO_MSG_ABI_OUT_LOG_QUEUE_ID	(1U)

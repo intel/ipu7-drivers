@@ -1,0 +1,35 @@
+From 9a0f07e3796d8c0f74621580c3b701e7ccd88a30 Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Thu, 11 Sep 2025 15:36:52 +0800
+Subject: [PATCH] media: pci: enable ipu7 in the Makefile & Kconfig
+
+Signed-off-by: linya14x <linx.yang@intel.com>
+---
+ drivers/media/pci/intel/Kconfig  | 1 +
+ drivers/media/pci/intel/Makefile | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/drivers/media/pci/intel/Kconfig b/drivers/media/pci/intel/Kconfig
+index d9fcddce02..948cda08ff 100644
+--- a/drivers/media/pci/intel/Kconfig
++++ b/drivers/media/pci/intel/Kconfig
+@@ -2,6 +2,7 @@
+
+ source "drivers/media/pci/intel/ipu3/Kconfig"
+ source "drivers/media/pci/intel/ipu6/Kconfig"
++source "drivers/media/pci/intel/ipu7/Kconfig"
+ source "drivers/media/pci/intel/ivsc/Kconfig"
+
+ config IPU_BRIDGE
+diff --git a/drivers/media/pci/intel/Makefile b/drivers/media/pci/intel/Makefile
+index 3a2cc65671..4886768ce1 100644
+--- a/drivers/media/pci/intel/Makefile
++++ b/drivers/media/pci/intel/Makefile
+@@ -6,3 +6,4 @@ obj-$(CONFIG_IPU_BRIDGE) += ipu-bridge.o
+ obj-y	+= ipu3/
+ obj-y	+= ivsc/
+ obj-$(CONFIG_VIDEO_INTEL_IPU6)	+= ipu6/
++obj-$(CONFIG_VIDEO_INTEL_IPU6)  += ipu7/
+--
+2.43.0
+

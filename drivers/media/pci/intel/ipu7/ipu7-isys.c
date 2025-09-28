@@ -394,7 +394,7 @@ static void isys_unregister_video_devices(struct ipu7_isys *isys)
 	unsigned int i, j;
 
 	for (i = 0; i < csi2_pdata->nports; i++)
-		for (j = 0; j < NR_OF_CSI2_SRC_PADS; j++)
+		for (j = 0; j < IPU7_NR_OF_CSI2_SRC_PADS; j++)
 			ipu7_isys_video_cleanup(&isys->csi2[i].av[j]);
 }
 
@@ -406,12 +406,12 @@ static int isys_register_video_devices(struct ipu7_isys *isys)
 	int ret;
 
 	for (i = 0; i < csi2_pdata->nports; i++) {
-		for (j = 0; j < NR_OF_CSI2_SRC_PADS; j++) {
+		for (j = 0; j < IPU7_NR_OF_CSI2_SRC_PADS; j++) {
 			struct ipu7_isys_video *av = &isys->csi2[i].av[j];
 
 			snprintf(av->vdev.name, sizeof(av->vdev.name),
 				 IPU_ISYS_ENTITY_PREFIX " ISYS Capture %u",
-				 i * NR_OF_CSI2_SRC_PADS + j);
+				 i * IPU7_NR_OF_CSI2_SRC_PADS + j);
 			av->isys = isys;
 			av->aq.vbq.buf_struct_size =
 				sizeof(struct ipu7_isys_video_buffer);
@@ -429,7 +429,7 @@ fail:
 	while (i--) {
 		while (j--)
 			ipu7_isys_video_cleanup(&isys->csi2[i].av[j]);
-		j = NR_OF_CSI2_SRC_PADS;
+		j = IPU7_NR_OF_CSI2_SRC_PADS;
 	}
 
 	return ret;
@@ -483,10 +483,10 @@ static int isys_csi2_create_media_links(struct ipu7_isys *isys)
 	for (i = 0; i < csi2_pdata->nports; i++) {
 		sd = &isys->csi2[i].asd.sd.entity;
 
-		for (j = 0; j < NR_OF_CSI2_SRC_PADS; j++) {
+		for (j = 0; j < IPU7_NR_OF_CSI2_SRC_PADS; j++) {
 			struct ipu7_isys_video *av = &isys->csi2[i].av[j];
 
-			ret = media_create_pad_link(sd, CSI2_PAD_SRC + j,
+			ret = media_create_pad_link(sd, IPU7_CSI2_PAD_SRC + j,
 						    &av->vdev.entity, 0, 0);
 			if (ret) {
 				dev_err(dev, "CSI2 can't create link\n");
@@ -1180,7 +1180,7 @@ static int isys_probe(struct auxiliary_device *auxdev,
 #endif
 
 	cpu_latency_qos_add_request(&isys->pm_qos, PM_QOS_DEFAULT_VALUE);
-	ret = alloc_fw_msg_bufs(isys, 20);
+	ret = alloc_fw_msg_bufs(isys, 40);
 	if (ret < 0)
 		goto out_cleanup_isys;
 
@@ -1505,7 +1505,7 @@ static void ipu7_isys_csi2_isr(struct ipu7_isys_csi2 *csi2)
 		dev_dbg(dev, "csi2-%u FE status 0x%08x\n", csi2->port, fe);
 	}
 
-	for (vc = 0; vc < NR_OF_CSI2_VC && (sync || fe); vc++) {
+	for (vc = 0; vc < IPU7_NR_OF_CSI2_VC && (sync || fe); vc++) {
 		s = ipu7_isys_query_stream_by_source(csi2->isys,
 						     csi2->asd.source, vc);
 		if (!s)
