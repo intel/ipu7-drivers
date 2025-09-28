@@ -33,11 +33,6 @@ struct ia_gofo_logger_config {
 	u32 hw_printf_buffer_size_bytes;
 };
 
-static inline void ia_gofo_logger_config_abi_test_func(void)
-{
-	CHECK_ALIGN32(struct ia_gofo_logger_config);
-}
-
 #pragma pack(push, 1)
 
 #define IA_GOFO_BUTTRESS_FW_BOOT_PARAMS_MAX_REG_IDX_PER_APP \
@@ -108,12 +103,6 @@ struct ia_gofo_secondary_boot_config {
 };
 
 #pragma pack(pop)
-
-static inline void ia_gofo_boot_config_abi_test_func(void)
-{
-	CHECK_ALIGN32(struct ia_gofo_boot_config);
-	CHECK_ALIGN32(struct ia_gofo_secondary_boot_config);
-}
 
 #define IA_GOFO_WDT_TIMEOUT_ERR			0xdead0401U
 #define IA_GOFO_MEM_FATAL_DME_ERR		0xdead0801U

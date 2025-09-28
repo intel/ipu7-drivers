@@ -1198,6 +1198,8 @@ int ipu7_isys_setup_video(struct ipu7_isys_video *av,
 	if (ret == -ENOIOCTLCMD) {
 		av->vc = 0;
 		av->dt = ipu7_isys_mbus_code_to_mipi(pfmt->code);
+		if (av->dt == 0xff)
+			return -EINVAL;
 		*nr_queues = 1;
 	} else if (*nr_queues && !ret) {
 		dev_dbg(dev, "Framedesc: stream %u, len %u, vc %u, dt %#x\n",

@@ -17,8 +17,8 @@ struct ipu7_hw_variants;
 struct ipu7_mmu;
 struct ipu7_mmu_info;
 
-#define ISYS_MMID 1
-#define PSYS_MMID 0
+#define ISYS_MMID 0x1
+#define PSYS_MMID 0x0
 
 /* IPU7 for LNL */
 /* IS MMU Cmd RD */

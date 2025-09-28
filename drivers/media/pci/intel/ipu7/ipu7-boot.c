@@ -210,7 +210,7 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 			       int num_queues, u32 uc_freq,
 			       dma_addr_t subsys_config, u8 major)
 {
-	u32 total_queue_size = 0, total_queue_size_aligned = 0;
+	u32 total_queue_size_aligned = 0;
 	struct ipu7_syscom_context *syscom = adev->syscom;
 	struct ia_gofo_boot_config *boot_config;
 	struct syscom_queue_params_config *cfgs;
@@ -220,8 +220,8 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 	void *queue_mem_ptr;
 	unsigned int i;
 
-	dev_dbg(dev, "boot config queues_nr: %d freq: %u sys_conf: 0x%llx\n",
-		num_queues, uc_freq, subsys_config);
+	dev_dbg(dev, "boot config queues_nr: %d freq: %u sys_conf: 0x%pad\n",
+		num_queues, uc_freq, &subsys_config);
 	/* Allocate boot config. */
 	adev->boot_config_size =
 		sizeof(*cfgs) * num_queues + sizeof(*boot_config);
@@ -253,8 +253,7 @@ int ipu7_boot_init_boot_config(struct ipu7_bus_device *adev,
 		u32 queue_size = qconfigs[i].max_capacity *
 			qconfigs[i].token_size_in_bytes;
 
-		total_queue_size += queue_size;
-		queue_size = ALIGN(queue_size, IA_GOFO_CL_SIZE);
+		queue_size = ALIGN(queue_size, 64U);
 		total_queue_size_aligned += queue_size;
 		qconfigs[i].queue_size = queue_size;
 	}

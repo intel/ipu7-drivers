@@ -93,13 +93,6 @@ enum ipu7_msg_node_option_types {
 
 #pragma pack(pop)
 
-static inline void ipu7_msg_node_test_func(void)
-{
-	CHECK_ALIGN32(struct ipu7_msg_node);
-	CHECK_ALIGN32(struct ipu7_msg_node_profile);
-	CHECK_ALIGN32(struct ipu7_msg_cb_profile);
-}
-
 #pragma pack(push, 1)
 
 enum ipu7_msg_link_type {
@@ -183,13 +176,6 @@ struct ipu7_msg_link {
 
 #pragma pack(pop)
 
-static inline void ipu7_msg_abi_link_test_func(void)
-{
-	CHECK_ALIGN32(struct ipu7_msg_link);
-	CHECK_ALIGN32(struct ipu7_msg_link_cmprs_option);
-	CHECK_ALIGN32(struct ipu7_msg_link_cmprs_plane_desc);
-}
-
 enum ipu7_msg_dev_state {
 	IPU_MSG_DEV_STATE_CLOSED = 0,
 	IPU_MSG_DEV_STATE_OPEN_WAIT = 1,
@@ -265,13 +251,6 @@ enum ipu7_msg_err_task {
 
 #pragma pack(pop)
 
-static inline void ipu7_msg_task_test_func(void)
-{
-	CHECK_ALIGN64(struct ipu7_msg_task);
-	CHECK_ALIGN64(struct ipu7_msg_task_done);
-	CHECK_ALIGN32(struct ipu7_msg_link_cmprs_option);
-}
-
 #pragma pack(push, 1)
 enum ipu7_msg_term_type {
 	IPU_MSG_TERM_TYPE_PAD = 0,
@@ -311,12 +290,6 @@ struct ipu7_msg_term_event {
 };
 
 #pragma pack(pop)
-
-static inline void ipu7_msg_term_test_func(void)
-{
-	CHECK_ALIGN32(struct ipu7_msg_term);
-	CHECK_ALIGN64(struct ipu7_msg_term_event);
-}
 
 #pragma pack(push, 1)
 #define IPU_MSG_DEVICE_SEND_MSG_ENABLED		1U
@@ -358,15 +331,6 @@ enum ipu7_msg_err_device {
 };
 
 #pragma pack(pop)
-
-static inline void ipu7_msg_device_test_func(void)
-{
-	CHECK_ALIGN32(struct ia_gofo_version_s);
-	CHECK_ALIGN64(struct ipu7_msg_dev_open);
-	CHECK_ALIGN64(struct ipu7_msg_dev_open_ack);
-	CHECK_ALIGN64(struct ipu7_msg_dev_close);
-	CHECK_ALIGN64(struct ipu7_msg_dev_close_ack);
-}
 
 #pragma pack(push, 1)
 #define IPU_MSG_GRAPH_ID_UNKNOWN	(0xffU)
@@ -464,15 +428,6 @@ enum ipu7_msg_err_graph {
 };
 
 #pragma pack(pop)
-
-static inline void ipu7_msg_graph_test_func(void)
-{
-	CHECK_ALIGN64(struct ipu7_msg_graph_open);
-	CHECK_ALIGN64(struct ipu7_msg_graph_open_ack);
-	CHECK_ALIGN64(struct ipu7_msg_graph_close);
-	CHECK_ALIGN64(struct ipu7_msg_graph_close_ack);
-	CHECK_ALIGN32(struct ipu7_msg_graph_open_ack_task_q_info);
-}
 
 #define FWPS_MSG_ABI_MAX_INPUT_QUEUES	(60U)
 #define FWPS_MSG_ABI_MAX_OUTPUT_QUEUES	(2U)

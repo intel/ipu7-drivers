@@ -23,10 +23,13 @@
 #include "ipu7-platform-regs.h"
 #include "ipu7-isys-csi-phy.h"
 
-#define PORT_A	0U
-#define PORT_B	1U
-#define PORT_C	2U
-#define PORT_D	3U
+#define PORT_A		0U
+#define PORT_B		1U
+#define PORT_C		2U
+#define PORT_D		3U
+
+#define N_DATA_IDS	8U
+static DECLARE_BITMAP(data_ids, N_DATA_IDS);
 
 struct ddlcal_counter_ref_s {
 	u16 min_mbps;
@@ -67,61 +70,61 @@ struct cdr_fbk_cap_prog_params {
 };
 
 static const struct ddlcal_counter_ref_s table0[] = {
-	{1500, 1999, 118},
-	{2000, 2499, 157},
-	{2500, 3499, 196},
-	{3500, 4499, 274},
-	{4500, 4500, 352},
-	{}
+	{ 1500, 1999, 118 },
+	{ 2000, 2499, 157 },
+	{ 2500, 3499, 196 },
+	{ 3500, 4499, 274 },
+	{ 4500, 4500, 352 },
+	{ }
 };
 
 static const struct ddlcal_params table1[] = {
-	{1500, 1587, 0, 143, 167, 17, 3, 4, 29},
-	{1588, 1687, 0, 135, 167, 15, 3, 4, 27},
-	{1688, 1799, 0, 127, 135, 15, 2, 4, 26},
-	{1800, 1928, 0, 119, 135, 13, 2, 3, 24},
-	{1929, 2076, 0, 111, 135, 13, 2, 3, 23},
-	{2077, 2249, 0, 103, 135, 11, 2, 3, 21},
-	{2250, 2454, 0, 95, 103, 11, 1, 3, 19},
-	{2455, 2699, 0, 87, 103, 9, 1, 3, 18},
-	{2700, 2999, 0, 79, 103, 9, 1, 2, 16},
-	{3000, 3229, 0, 71, 71, 7, 1, 2, 15},
-	{3230, 3599, 1, 87, 103, 9, 1, 3, 18},
-	{3600, 3999, 1, 79, 103, 9, 1, 2, 16},
-	{4000, 4499, 1, 71, 103, 7, 1, 2, 15},
-	{4500, 4500, 1, 63, 71, 7, 0, 2, 13},
-	{}
+	{ 1500, 1587, 0, 143, 167, 17, 3, 4, 29 },
+	{ 1588, 1687, 0, 135, 167, 15, 3, 4, 27 },
+	{ 1688, 1799, 0, 127, 135, 15, 2, 4, 26 },
+	{ 1800, 1928, 0, 119, 135, 13, 2, 3, 24 },
+	{ 1929, 2076, 0, 111, 135, 13, 2, 3, 23 },
+	{ 2077, 2249, 0, 103, 135, 11, 2, 3, 21 },
+	{ 2250, 2454, 0, 95, 103, 11, 1, 3, 19 },
+	{ 2455, 2699, 0, 87, 103, 9, 1, 3, 18 },
+	{ 2700, 2999, 0, 79, 103, 9, 1, 2, 16 },
+	{ 3000, 3229, 0, 71, 71, 7, 1, 2, 15 },
+	{ 3230, 3599, 1, 87, 103, 9, 1, 3, 18 },
+	{ 3600, 3999, 1, 79, 103, 9, 1, 2, 16 },
+	{ 4000, 4499, 1, 71, 103, 7, 1, 2, 15 },
+	{ 4500, 4500, 1, 63, 71, 7, 0, 2, 13 },
+	{ }
 };
 
 static const struct i_thssettle_params table2[] = {
-	{80, 124, 24},
-	{125, 249, 20},
-	{250, 499, 16},
-	{500, 749, 14},
-	{750, 1499, 13},
-	{1500, 4500, 12},
-	{}
+	{ 80, 124, 24 },
+	{ 125, 249, 20 },
+	{ 250, 499, 16 },
+	{ 500, 749, 14 },
+	{ 750, 1499, 13 },
+	{ 1500, 4500, 12 },
+	{ }
 };
 
 static const struct oa_lane_clk_div_params table6[] = {
-	{80, 159, 0x1},
-	{160, 319, 0x2},
-	{320, 639, 0x3},
-	{640, 1279, 0x4},
-	{1280, 2560, 0x5},
-	{2561, 4500, 0x6},
-	{}
+	{ 80, 159, 0x1 },
+	{ 160, 319, 0x2 },
+	{ 320, 639, 0x3 },
+	{ 640, 1279, 0x4 },
+	{ 1280, 2560, 0x5 },
+	{ 2561, 4500, 0x6 },
+	{ }
 };
 
 static const struct cdr_fbk_cap_prog_params table7[] = {
-	{80, 919, 0},
-	{920, 1029, 1},
-	{1030, 1169, 2},
-	{1170, 1349, 3},
-	{1350, 1589, 4},
-	{1590, 1949, 5},
-	{1950, 2499, 6},
-	{}
+	{ 80, 919, 0 },
+	{ 920, 1029, 1 },
+	{ 1030, 1169, 2 },
+	{ 1170, 1349, 3 },
+	{ 1350, 1589, 4 },
+	{ 1590, 1949, 5 },
+	{ 1950, 2499, 6 },
+	{ }
 };
 
 static void dwc_phy_write(struct ipu7_isys *isys, u32 id, u32 addr, u16 data)
@@ -259,8 +262,6 @@ static void ipu7_isys_csi_phy_reset(struct ipu7_isys *isys, u32 id)
 	gpreg_write(isys, id, PHY_SHUTDOWN, 0);
 }
 
-#define N_DATA_IDS		8
-static DECLARE_BITMAP(data_ids, N_DATA_IDS);
 /* 8 Data ID monitors, each Data ID is composed by pair of VC and data type */
 static int __dids_config(struct ipu7_isys_csi2 *csi2, u32 id, u8 vc, u8 dt)
 {
@@ -327,7 +328,7 @@ static int ipu7_isys_csi_ctrl_dids_config(struct ipu7_isys_csi2 *csi2, u32 id)
 
 	for (i = 0; i < desc.num_entries; i++) {
 		desc_entry = &desc.entry[i];
-		if (desc_entry->bus.csi2.vc < NR_OF_CSI2_VC) {
+		if (desc_entry->bus.csi2.vc < IPU7_NR_OF_CSI2_VC) {
 			ret = __dids_config(csi2, id, desc_entry->bus.csi2.vc,
 					    desc_entry->bus.csi2.dt);
 			if (ret)
@@ -338,7 +339,7 @@ static int ipu7_isys_csi_ctrl_dids_config(struct ipu7_isys_csi2 *csi2, u32 id)
 	return 0;
 }
 
-#define CDPHY_TIMEOUT (5000000)
+#define CDPHY_TIMEOUT 5000000U
 static int ipu7_isys_phy_ready(struct ipu7_isys *isys, u32 id)
 {
 	void __iomem *isys_base = isys->pdata->base;
@@ -396,9 +397,9 @@ static int ipu7_isys_phy_ready(struct ipu7_isys *isys, u32 id)
 	return ret;
 }
 
-static int lookup_table1(u16 mbps)
+static int lookup_table1(u64 mbps)
 {
-	int i;
+	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(table1); i++) {
 		if (mbps >= table1[i].min_mbps && mbps <= table1[i].max_mbps)
@@ -733,6 +734,7 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 	u16 reg;
 	u16 val;
 	u32 i;
+	u64 r64;
 	u32 r;
 
 	if (is_ipu7p5(isys->adev->isp->hw_ver))
@@ -772,13 +774,10 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 	 * The formula is suitable for data rate 80-3500Msps.
 	 * Timebase (us) = 1, DIV = 32, TDDL (UI) = 0.5
 	 */
-	if (mbps >= 80U) {
-		coarse_target = (u16)div_u64_rem(mbps, 16, &r);
-		if (!r)
-			coarse_target--;
-	} else {
+	if (mbps >= 80U)
+		coarse_target = DIV_ROUND_UP_ULL(mbps, 16) - 1;
+	else
 		coarse_target = 56;
-	}
 
 	for (i = 0; i < trios; i++) {
 		reg = CORE_DIG_CLANE_0_RW_HS_RX_2 + i * 0x400;
@@ -808,8 +807,8 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 		dwc_phy_write_mask(isys, id, reg, 2, 0, 2);
 	}
 
-	deass_thresh = (u16)div_u64_rem(7 * 1000 * 6, mbps * 5U, &r) + 1;
-	if (r != 0)
+	deass_thresh = (u16)div64_u64_rem(7 * 1000 * 6, mbps * 5U, &r64) + 1;
+	if (r64 != 0)
 		deass_thresh++;
 
 	reg = CORE_DIG_RW_TRIO0_2;
@@ -817,8 +816,7 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 		dwc_phy_write_mask(isys, id, reg + 0x400 * i,
 				   deass_thresh, 0, 7);
 
-	delay_thresh =
-		((224U - (9U * 7U)) * 1000U) / (5U * mbps) - 7U;
+	delay_thresh = div64_u64((224U - (9U * 7U)) * 1000U, 5U * mbps) - 7u;
 
 	if (delay_thresh < 1)
 		delay_thresh = 1;
@@ -869,8 +867,8 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 	}
 }
 
-static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
-				 bool aggregation)
+static int ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
+				bool aggregation)
 {
 	struct device *dev = &isys->adev->auxdev.dev;
 	u32 phy_mode;
@@ -883,8 +881,8 @@ static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 		link_freq = ipu7_isys_csi2_get_link_freq(&isys->csi2[id]);
 
 	if (link_freq < 0) {
-		dev_warn(dev, "get link freq failed, use default mbps\n");
-		link_freq = 560000000;
+		dev_err(dev, "get link freq failed (%lld)\n", link_freq);
+		return link_freq;
 	}
 
 	mbps = div_u64(link_freq, 500000);
@@ -948,6 +946,8 @@ static void ipu7_isys_phy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 		dev_err(dev, "unsupported phy mode %d!\n",
 			isys->csi2[id].phy_mode);
 	}
+
+	return 0;
 }
 
 int ipu7_isys_csi_phy_powerup(struct ipu7_isys_csi2 *csi2)
@@ -984,7 +984,10 @@ int ipu7_isys_csi_phy_powerup(struct ipu7_isys_csi2 *csi2)
 	ipu7_isys_csi_ctrl_cfg(csi2);
 	ipu7_isys_csi_ctrl_dids_config(csi2, id);
 
-	ipu7_isys_phy_config(isys, id, lanes, aggregation);
+	ret = ipu7_isys_phy_config(isys, id, lanes, aggregation);
+	if (ret < 0)
+		return ret;
+
 	gpreg_write(isys, id, PHY_RESET, 1);
 	gpreg_write(isys, id, PHY_SHUTDOWN, 1);
 	dwc_csi_write(isys, id, DPHY_RSTZ, 1);
@@ -1000,7 +1003,10 @@ int ipu7_isys_csi_phy_powerup(struct ipu7_isys_csi2 *csi2)
 
 	/* config PORT_B if aggregation mode */
 	if (aggregation) {
-		ipu7_isys_phy_config(isys, PORT_B, 2, aggregation);
+		ret = ipu7_isys_phy_config(isys, PORT_B, 2, aggregation);
+		if (ret < 0)
+			return ret;
+
 		gpreg_write(isys, PORT_B, PHY_RESET, 1);
 		gpreg_write(isys, PORT_B, PHY_SHUTDOWN, 1);
 		dwc_csi_write(isys, PORT_B, DPHY_RSTZ, 1);

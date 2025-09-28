@@ -54,9 +54,6 @@ s64 ipu7_isys_csi2_get_link_freq(struct ipu7_isys_csi2 *csi2)
 {
 	struct media_pad *src_pad;
 
-	if (!csi2)
-		return -EINVAL;
-
 	src_pad = media_entity_remote_source_pad_unique(&csi2->asd.sd.entity);
 	if (IS_ERR(src_pad)) {
 		dev_err(&csi2->isys->adev->auxdev.dev,
@@ -118,34 +115,10 @@ static const struct v4l2_subdev_core_ops csi2_sd_core_ops = {
 	.unsubscribe_event = v4l2_event_subdev_unsubscribe,
 };
 
-static void csi2_irq_en(struct ipu7_isys_csi2 *csi2, bool enable)
+static void csi2_irq_enable(struct ipu7_isys_csi2 *csi2)
 {
 	struct ipu7_device *isp = csi2->isys->adev->isp;
 	unsigned int offset, mask;
-
-	if (!enable) {
-		/* disable CSI2 legacy error irq */
-		offset = IS_IO_CSI2_ERR_LEGACY_IRQ_CTL_BASE(csi2->port);
-		mask = IPU7_CSI_RX_ERROR_IRQ_MASK;
-		writel(mask, csi2->base + offset + IRQ_CTL_CLEAR);
-		writel(0, csi2->base + offset + IRQ_CTL_MASK);
-		writel(0, csi2->base + offset + IRQ_CTL_ENABLE);
-
-		/* disable CSI2 legacy sync irq */
-		offset = IS_IO_CSI2_SYNC_LEGACY_IRQ_CTL_BASE(csi2->port);
-		mask = IPU7_CSI_RX_SYNC_IRQ_MASK;
-		writel(mask, csi2->base + offset + IRQ_CTL_CLEAR);
-		writel(0, csi2->base + offset + IRQ_CTL_MASK);
-		writel(0, csi2->base + offset + IRQ_CTL_ENABLE);
-
-		if (!is_ipu7(isp->hw_ver)) {
-			writel(mask, csi2->base + offset + IRQ1_CTL_CLEAR);
-			writel(0, csi2->base + offset + IRQ1_CTL_MASK);
-			writel(0, csi2->base + offset + IRQ1_CTL_ENABLE);
-		}
-
-		return;
-	}
 
 	/* enable CSI2 legacy error irq */
 	offset = IS_IO_CSI2_ERR_LEGACY_IRQ_CTL_BASE(csi2->port);
@@ -169,6 +142,32 @@ static void csi2_irq_en(struct ipu7_isys_csi2 *csi2, bool enable)
 	}
 }
 
+static void csi2_irq_disable(struct ipu7_isys_csi2 *csi2)
+{
+	struct ipu7_device *isp = csi2->isys->adev->isp;
+	unsigned int offset, mask;
+
+	/* disable CSI2 legacy error irq */
+	offset = IS_IO_CSI2_ERR_LEGACY_IRQ_CTL_BASE(csi2->port);
+	mask = IPU7_CSI_RX_ERROR_IRQ_MASK;
+	writel(mask, csi2->base + offset + IRQ_CTL_CLEAR);
+	writel(0, csi2->base + offset + IRQ_CTL_MASK);
+	writel(0, csi2->base + offset + IRQ_CTL_ENABLE);
+
+	/* disable CSI2 legacy sync irq */
+	offset = IS_IO_CSI2_SYNC_LEGACY_IRQ_CTL_BASE(csi2->port);
+	mask = IPU7_CSI_RX_SYNC_IRQ_MASK;
+	writel(mask, csi2->base + offset + IRQ_CTL_CLEAR);
+	writel(0, csi2->base + offset + IRQ_CTL_MASK);
+	writel(0, csi2->base + offset + IRQ_CTL_ENABLE);
+
+	if (!is_ipu7(isp->hw_ver)) {
+		writel(mask, csi2->base + offset + IRQ1_CTL_CLEAR);
+		writel(0, csi2->base + offset + IRQ1_CTL_MASK);
+		writel(0, csi2->base + offset + IRQ1_CTL_ENABLE);
+	}
+}
+
 static void ipu7_isys_csi2_disable_stream(struct ipu7_isys_csi2 *csi2)
 {
 	struct ipu7_isys *isys = csi2->isys;
@@ -177,7 +176,7 @@ static void ipu7_isys_csi2_disable_stream(struct ipu7_isys_csi2 *csi2)
 	ipu7_isys_csi_phy_powerdown(csi2);
 
 	writel(0x4, isys_base + IS_IO_GPREGS_BASE + CLK_DIV_FACTOR_APB_CLK);
-	csi2_irq_en(csi2, 0);
+	csi2_irq_disable(csi2);
 }
 
 static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2)
@@ -211,7 +210,8 @@ static int ipu7_isys_csi2_enable_stream(struct ipu7_isys_csi2 *csi2)
 		dev_err(dev, "CSI-%d PHY power up failed %d\n", port, ret);
 		return ret;
 	}
-	csi2_irq_en(csi2, 1);
+
+	csi2_irq_enable(csi2);
 
 	return 0;
 }
@@ -226,7 +226,7 @@ static int ipu7_isys_csi2_set_sel(struct v4l2_subdev *sd,
 	struct v4l2_mbus_framefmt *src_ffmt;
 	struct v4l2_rect *crop;
 
-	if (sel->pad == CSI2_PAD_SINK || sel->target != V4L2_SEL_TGT_CROP)
+	if (sel->pad == IPU7_CSI2_PAD_SINK || sel->target != V4L2_SEL_TGT_CROP)
 		return -EINVAL;
 
 	sink_ffmt = v4l2_subdev_state_get_opposite_stream_format(state,
@@ -319,7 +319,7 @@ static int ipu7_isys_csi2_enable_streams(struct v4l2_subdev *sd,
 	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
 	struct ipu7_isys_csi2 *csi2 = to_ipu7_isys_csi2(asd);
 	struct v4l2_subdev *r_sd;
-	struct media_pad *r_pad;
+	struct media_pad *rp;
 	u32 sink_pad, sink_stream;
 	int ret, i;
 
@@ -342,10 +342,10 @@ static int ipu7_isys_csi2_enable_streams(struct v4l2_subdev *sd,
 	if (ret)
 		return ret;
 
-	r_pad = media_pad_remote_pad_first(&sd->entity.pads[CSI2_PAD_SINK]);
-	r_sd = media_entity_to_v4l2_subdev(r_pad->entity);
+	rp = media_pad_remote_pad_first(&sd->entity.pads[IPU7_CSI2_PAD_SINK]);
+	r_sd = media_entity_to_v4l2_subdev(rp->entity);
 
-	ret = v4l2_subdev_enable_streams(r_sd, r_pad->index,
+	ret = v4l2_subdev_enable_streams(r_sd, rp->index,
 					 BIT_ULL(sink_stream));
 	if (!ret) {
 		csi2->stream_count++;
@@ -365,7 +365,7 @@ static int ipu7_isys_csi2_disable_streams(struct v4l2_subdev *sd,
 	struct ipu7_isys_subdev *asd = to_ipu7_isys_subdev(sd);
 	struct ipu7_isys_csi2 *csi2 = to_ipu7_isys_csi2(asd);
 	struct v4l2_subdev *r_sd;
-	struct media_pad *r_pad;
+	struct media_pad *rp;
 	u32 sink_pad, sink_stream;
 	int ret, i;
 
@@ -379,10 +379,10 @@ static int ipu7_isys_csi2_disable_streams(struct v4l2_subdev *sd,
 	if (ret)
 		return ret;
 
-	r_pad = media_pad_remote_pad_first(&sd->entity.pads[CSI2_PAD_SINK]);
-	r_sd = media_entity_to_v4l2_subdev(r_pad->entity);
+	rp = media_pad_remote_pad_first(&sd->entity.pads[IPU7_CSI2_PAD_SINK]);
+	r_sd = media_entity_to_v4l2_subdev(rp->entity);
 
-	v4l2_subdev_disable_streams(r_sd, r_pad->index, BIT_ULL(sink_stream));
+	v4l2_subdev_disable_streams(r_sd, rp->index, BIT_ULL(sink_stream));
 
 	if (--csi2->stream_count)
 		return 0;
@@ -450,7 +450,8 @@ int ipu7_isys_csi2_init(struct ipu7_isys_csi2 *csi2,
 	csi2->asd.isys = isys;
 
 	ret = ipu7_isys_subdev_init(&csi2->asd, &csi2_sd_ops, 0,
-				    NR_OF_CSI2_SINK_PADS, NR_OF_CSI2_SRC_PADS);
+				    IPU7_NR_OF_CSI2_SINK_PADS,
+				    IPU7_NR_OF_CSI2_SRC_PADS);
 	if (ret)
 		return ret;
 
@@ -527,7 +528,7 @@ int ipu7_isys_csi2_get_remote_desc(u32 source_stream,
 	if (!source)
 		return -EPIPE;
 
-	pad = media_pad_remote_pad_first(&csi2->asd.pad[CSI2_PAD_SINK]);
+	pad = media_pad_remote_pad_first(&csi2->asd.pad[IPU7_CSI2_PAD_SINK]);
 	if (!pad)
 		return -EPIPE;
 
@@ -553,7 +554,7 @@ int ipu7_isys_csi2_get_remote_desc(u32 source_stream,
 		return -EINVAL;
 	}
 
-	if (desc_entry->bus.csi2.vc >= NR_OF_CSI2_VC) {
+	if (desc_entry->bus.csi2.vc >= IPU7_NR_OF_CSI2_VC) {
 		dev_err(dev, "invalid vc %d\n", desc_entry->bus.csi2.vc);
 		return -EINVAL;
 	}
