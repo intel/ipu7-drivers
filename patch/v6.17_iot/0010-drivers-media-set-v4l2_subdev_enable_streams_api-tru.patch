@@ -1,7 +1,7 @@
-From 8ceeec3023334389a058b317fdf8c178bd4a03d7 Mon Sep 17 00:00:00 2001
+From 357a405c5e4411b1fa89ac323d7e8db454469386 Mon Sep 17 00:00:00 2001
 From: hepengpx <pengpengx.he@intel.com>
 Date: Wed, 27 Aug 2025 11:10:06 +0800
-Subject: [PATCH 2/2] drivers: media: set v4l2_subdev_enable_streams_api=true
+Subject: [PATCH 10/10] drivers: media: set v4l2_subdev_enable_streams_api=true
  for WA
 
 Signed-off-by: hepengpx <pengpengx.he@intel.com>
@@ -16,12 +16,12 @@ index 4fd25fea3b..60a05561f3 100644
 @@ -32,7 +32,7 @@
   * 'v4l2_subdev_enable_streams_api' to 1 below.
   */
-
+ 
 -static bool v4l2_subdev_enable_streams_api;
 +static bool v4l2_subdev_enable_streams_api = true;
  #endif
-
+ 
  /*
---
-2.34.1
+-- 
+2.43.0
 
