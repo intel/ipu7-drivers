@@ -629,7 +629,7 @@ static int start_streaming(struct vb2_queue *q, unsigned int count)
 	ret = buffer_list_get(stream, bl);
 	if (ret < 0) {
 		dev_warn(dev, "no buffer available, DRIVER BUG?\n");
-		goto out;
+		goto out_stream_start;
 	}
 
 	ret = ipu7_isys_fw_open(av->isys);
@@ -877,6 +877,7 @@ static int ipu_isys_reset(struct ipu7_isys_video *self_av,
 end_of_reset:
 	mutex_lock(&isys->reset_mutex);
 	isys->state &= ~RESET_STATE_IN_RESET;
+	isys->need_reset = false;
 	mutex_unlock(&isys->reset_mutex);
 	dev_dbg(dev, "reset done\n");
 
