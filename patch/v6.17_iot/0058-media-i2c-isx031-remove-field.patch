@@ -1,0 +1,27 @@
+From 81a7c8d9e3c45968cc7e15d6f4f18c3f5c87b98f Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Fri, 12 Sep 2025 04:55:38 +0800
+Subject: [PATCH 58/61] media: i2c: isx031: remove field
+
+In GMSL case, field is not propagated to Serializer.
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/media/i2c/isx031.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/media/i2c/isx031.c b/drivers/media/i2c/isx031.c
+index 05d5f818c19bb..9bf413a47c0db 100644
+--- a/drivers/media/i2c/isx031.c
++++ b/drivers/media/i2c/isx031.c
+@@ -460,7 +460,6 @@ static void isx031_update_pad_format(const struct isx031_mode *mode,
+ 	fmt->width = mode->width;
+ 	fmt->height = mode->height;
+ 	fmt->code = mode->code;
+-	fmt->field = V4L2_FIELD_NONE;
+ }
+ 
+ static int isx031_start_streaming(struct isx031 *isx031)
+-- 
+2.50.1
+

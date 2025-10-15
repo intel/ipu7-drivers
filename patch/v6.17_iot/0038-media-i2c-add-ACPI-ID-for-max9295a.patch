@@ -1,0 +1,38 @@
+From e27db809fb35f3ffb65760218495960f83366a39 Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Thu, 11 Sep 2025 04:11:03 +0800
+Subject: [PATCH 38/61] media: i2c: add ACPI ID for max9295a
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/media/i2c/maxim-serdes/max96717.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/media/i2c/maxim-serdes/max96717.c b/drivers/media/i2c/maxim-serdes/max96717.c
+index 291380257fe28..a4f72295809b9 100644
+--- a/drivers/media/i2c/maxim-serdes/max96717.c
++++ b/drivers/media/i2c/maxim-serdes/max96717.c
+@@ -1667,6 +1667,12 @@ static const struct max96717_chip_info max96717_info = {
+ 	.phy_hw_ids = { 1 },
+ };
+ 
++static const struct acpi_device_id max9295a_acpi_ids[] = {
++       { "INTC1138", .driver_data = (kernel_ulong_t)&max9295a_info},
++       {}
++};
++MODULE_DEVICE_TABLE(acpi, max9295a_acpi_ids);
++
+ static const struct of_device_id max96717_of_ids[] = {
+ 	{ .compatible = "maxim,max9295a", .data = &max9295a_info },
+ 	{ .compatible = "maxim,max96717", .data = &max96717_info },
+@@ -1680,6 +1686,7 @@ static struct i2c_driver max96717_i2c_driver = {
+ 	.driver	= {
+ 		.name = MAX96717_NAME,
+ 		.of_match_table = max96717_of_ids,
++		.acpi_match_table = ACPI_PTR(max9295a_acpi_ids),
+ 	},
+ 	.probe = max96717_probe,
+ 	.remove = max96717_remove,
+-- 
+2.50.1
+

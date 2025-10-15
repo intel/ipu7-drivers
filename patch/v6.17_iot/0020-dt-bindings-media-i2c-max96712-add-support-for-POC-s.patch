@@ -1,0 +1,40 @@
+From 1999af33923b985231c2912e508638107f4bf4fc Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Fri, 18 Jul 2025 18:24:46 +0300
+Subject: [PATCH 20/61] dt-bindings: media: i2c: max96712: add support for POC
+ supplies
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The GMSL links can carry power to the serializer when using coaxial
+cables.
+
+Document this capability.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+Reviewed-by: Niklas Söderlund <niklas.soderlund+renesas@ragnatech.se>
+Reviewed-by: Rob Herring (Arm) <robh@kernel.org>
+---
+ .../devicetree/bindings/media/i2c/maxim,max96712.yaml         | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+index 758c0223977d4..b345305acc4c3 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+@@ -96,6 +96,10 @@ properties:
+       - required: [port@6]
+       - required: [port@7]
+ 
++patternProperties:
++  '^port[0-3]-poc-supply$':
++    description: Regulator providing Power over Coax for GMSL ports
++
+ required:
+   - compatible
+   - reg
+-- 
+2.50.1
+

@@ -1,0 +1,85 @@
+From de5a439e1da935b9de62c92885d726c8403d51b5 Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Thu, 11 Sep 2025 10:43:16 +0800
+Subject: [PATCH 53/61] media: i2c: maxim-serdes: max_des: Add conditional
+ checking for multi streaming
+
+Starting second stream in max_des will override the masking for first stream.
+Instead of re-write all streams, only write to current selection of stream.
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/media/i2c/maxim-serdes/max_des.c | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/i2c/maxim-serdes/max_des.c b/drivers/media/i2c/maxim-serdes/max_des.c
+index cf815a1af4b34..ecb6c66e76602 100644
+--- a/drivers/media/i2c/maxim-serdes/max_des.c
++++ b/drivers/media/i2c/maxim-serdes/max_des.c
+@@ -2195,7 +2195,7 @@ static int max_des_update_link(struct max_des_priv *priv,
+ 			       struct max_des_remap_context *context,
+ 			       struct max_des_link *link,
+ 			       struct v4l2_subdev_state *state,
+-			       u64 *streams_masks)
++			       u64 *streams_masks, bool enable)
+ {
+ 	struct max_des *des = priv->des;
+ 	struct max_des_pipe *pipe;
+@@ -2205,6 +2205,9 @@ static int max_des_update_link(struct max_des_priv *priv,
+ 	if (!pipe)
+ 		return -ENOENT;
+ 
++	if (pipe->enabled == enable)
++		return 0;
++
+ 	ret = max_des_update_pipe(priv, context, pipe, state, streams_masks);
+ 	if (ret)
+ 		return ret;
+@@ -2285,7 +2288,7 @@ static int max_des_update_active(struct max_des_priv *priv, u64 *streams_masks,
+ static int max_des_update_links(struct max_des_priv *priv,
+ 				struct max_des_remap_context *context,
+ 				struct v4l2_subdev_state *state,
+-				u64 *streams_masks)
++				u64 *streams_masks, bool enable)
+ {
+ 	struct max_des *des = priv->des;
+ 	unsigned int failed_update_link_id = des->ops->num_links;
+@@ -2296,7 +2299,7 @@ static int max_des_update_links(struct max_des_priv *priv,
+ 		struct max_des_link *link = &des->links[i];
+ 
+ 		ret = max_des_update_link(priv, context, link, state,
+-					  streams_masks);
++					  streams_masks, enable);
+ 		if (ret) {
+ 			failed_update_link_id = i;
+ 			goto err;
+@@ -2310,7 +2313,7 @@ static int max_des_update_links(struct max_des_priv *priv,
+ 		struct max_des_link *link = &des->links[i];
+ 
+ 		max_des_update_link(priv, context, link, state,
+-				    priv->streams_masks);
++				    priv->streams_masks, enable);
+ 	}
+ 
+ 	return ret;
+@@ -2385,7 +2388,7 @@ static int max_des_update_streams(struct v4l2_subdev *sd,
+ 	if (ret)
+ 		goto err_revert_streams_disable;
+ 
+-	ret = max_des_update_links(priv, &context, state, streams_masks);
++	ret = max_des_update_links(priv, &context, state, streams_masks, enable);
+ 	if (ret)
+ 		goto err_revert_active_disable;
+ 
+@@ -2416,7 +2419,7 @@ static int max_des_update_streams(struct v4l2_subdev *sd,
+ 	max_des_update_tpg(priv, state, priv->streams_masks);
+ 
+ err_revert_links_update:
+-	max_des_update_links(priv, &context, state, priv->streams_masks);
++	max_des_update_links(priv, &context, state, priv->streams_masks, false);
+ 
+ err_revert_active_disable:
+ 	max_des_update_active(priv, priv->streams_masks, true);
+-- 
+2.50.1
+

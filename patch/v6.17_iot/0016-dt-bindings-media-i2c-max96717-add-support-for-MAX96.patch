@@ -1,0 +1,41 @@
+From 17e1093428dcd843dd1a629b0a51ccf03564e16d Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Fri, 18 Jul 2025 18:24:42 +0300
+Subject: [PATCH 16/61] dt-bindings: media: i2c: max96717: add support for
+ MAX96793
+
+MAX96793 is a newer variant of the MAX96717 which also supports GMSL3
+links.
+
+Document this compatibility.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+---
+ .../devicetree/bindings/media/i2c/maxim,max96717.yaml          | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+index 78ecbab8205a5..02a44db982852 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+@@ -30,6 +30,8 @@ description:
+ 
+   MAX9295A only supports pixel mode.
+ 
++  MAX96793 also supports GMSL3 mode.
++
+ properties:
+   compatible:
+     oneOf:
+@@ -39,6 +41,7 @@ properties:
+       - items:
+           - enum:
+               - maxim,max96717
++              - maxim,max96793
+           - const: maxim,max96717f
+ 
+   '#gpio-cells':
+-- 
+2.50.1
+
