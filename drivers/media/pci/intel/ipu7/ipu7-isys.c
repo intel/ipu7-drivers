@@ -175,7 +175,7 @@ static int isys_register_ext_subdev(struct ipu7_isys *isys,
 	client = isys_find_i2c_subdev(adapter, sd_info);
 	if (client) {
 		dev_warn(dev, "Device exists\n");
-#if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
+#if IS_ENABLED(CONFIG_INTEL_IPU_ACPI)
 		/* TODO: remove i2c_unregister_device() */
 		i2c_unregister_device(client);
 #else
@@ -263,7 +263,7 @@ static int isys_fw_log_init(struct ipu7_isys *isys)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
+#if IS_ENABLED(CONFIG_INTEL_IPU_ACPI)
 /* The .bound() notifier callback when a match is found */
 static int isys_notifier_bound(struct v4l2_async_notifier *notifier,
 			       struct v4l2_subdev *sd,
@@ -497,7 +497,7 @@ static int isys_csi2_create_media_links(struct ipu7_isys *isys)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
+#if IS_ENABLED(CONFIG_INTEL_IPU_ACPI)
 static int isys_register_devices(struct ipu7_isys *isys)
 {
 	struct device *dev = &isys->adev->auxdev.dev;
@@ -771,7 +771,7 @@ static const struct dev_pm_ops isys_pm_ops = {
 	.resume = isys_resume,
 };
 
-#if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
+#if IS_ENABLED(CONFIG_INTEL_IPU_ACPI)
 static void isys_remove(struct auxiliary_device *auxdev)
 {
 	struct ipu7_isys *isys = dev_get_drvdata(&auxdev->dev);
