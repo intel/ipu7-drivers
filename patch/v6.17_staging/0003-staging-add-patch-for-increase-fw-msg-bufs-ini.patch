@@ -1,0 +1,29 @@
+From 192b2914be327a0f91893755d2fa18eaff017947 Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Sat, 1 Nov 2025 16:55:35 +0800
+Subject: [PATCH] patch: staging add patch for increase fw msg bufs initial
+ amount to 40
+
+Change-Id: 09d80b512367371db6bbad83d3eaaab17dadf742
+Signed-off-by: hepengpx <pengpengx.he@intel.com>
+Signed-off-by: linya14x <linx.yang@intel.com>
+---
+ drivers/staging/media/ipu7/ipu7-isys.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7-isys.c b/drivers/staging/media/ipu7/ipu7-isys.c
+index 592ad8ec86..b29965be5a 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -764,7 +764,7 @@ static int isys_probe(struct auxiliary_device *auxdev,
+ 	isys_stream_init(isys);
+
+ 	cpu_latency_qos_add_request(&isys->pm_qos, PM_QOS_DEFAULT_VALUE);
+-	ret = alloc_fw_msg_bufs(isys, 20);
++	ret = alloc_fw_msg_bufs(isys, 40);
+ 	if (ret < 0)
+ 		goto out_cleanup_isys;
+
+--
+2.43.0
+

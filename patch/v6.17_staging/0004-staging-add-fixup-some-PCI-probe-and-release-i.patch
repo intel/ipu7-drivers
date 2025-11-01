@@ -1,0 +1,98 @@
+From 7b6f4d656c37ca7b0ee9734c991932be19ebe315 Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Fri, 24 Oct 2025 14:58:47 +0800
+Subject: [PATCH] patch: staging add fixup some PCI probe and release issues
+
+Signed-off-by: Bingbu Cao <bingbu.cao@intel.com>
+Signed-off-by: linya14x <linx.yang@intel.com>
+
+Change-Id: Iee60c79f422d1ebbf017da2615e5775cc48a3900
+---
+ drivers/staging/media/ipu7/ipu7.c | 27 ++++++++++++---------------
+ 1 file changed, 12 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7.c b/drivers/staging/media/ipu7/ipu7.c
+index e4dab55fbb..0337d9d74b 100644
+--- a/drivers/staging/media/ipu7/ipu7.c
++++ b/drivers/staging/media/ipu7/ipu7.c
+@@ -2300,20 +2300,13 @@ static void ipu7_remove_debugfs(struct ipu7_device *isp)
+ }
+ #endif /* CONFIG_DEBUG_FS */
+
+-static int ipu7_pci_config_setup(struct pci_dev *dev)
++static void ipu7_pci_config_setup(struct pci_dev *dev)
+ {
+ 	u16 pci_command;
+-	int ret;
+
+ 	pci_read_config_word(dev, PCI_COMMAND, &pci_command);
+ 	pci_command |= PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER;
+ 	pci_write_config_word(dev, PCI_COMMAND, pci_command);
+-
+-	ret = pci_enable_msi(dev);
+-	if (ret)
+-		dev_err(&dev->dev, "Failed to enable msi (%d)\n", ret);
+-
+-	return ret;
+ }
+
+ static int ipu7_map_fw_code_region(struct ipu7_bus_device *sys,
+@@ -2487,7 +2480,6 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+ 	if (!isp)
+ 		return -ENOMEM;
+
+-	dev_set_name(dev, "intel-ipu7");
+ 	isp->pdev = pdev;
+ 	INIT_LIST_HEAD(&isp->devices);
+
+@@ -2562,13 +2554,15 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+
+ 	dma_set_max_seg_size(dev, UINT_MAX);
+
+-	ret = ipu7_pci_config_setup(pdev);
+-	if (ret)
+-		return ret;
++	ipu7_pci_config_setup(pdev);
++
++	ret = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_ALL_TYPES);
++	if (ret < 0)
++		return dev_err_probe(dev, ret, "Failed to alloc irq vector\n");
+
+ 	ret = ipu_buttress_init(isp);
+ 	if (ret)
+-		return ret;
++		goto pci_irq_free;
+
+ 	dev_info(dev, "firmware cpd file: %s\n", isp->cpd_fw_name);
+
+@@ -2699,6 +2693,8 @@ out_ipu_bus_del_devices:
+ 	release_firmware(isp->cpd_fw);
+ buttress_exit:
+ 	ipu_buttress_exit(isp);
++pci_irq_free:
++	pci_free_irq_vectors(pdev);
+
+ 	return ret;
+ }
+@@ -2718,6 +2714,9 @@ static void ipu7_pci_remove(struct pci_dev *pdev)
+ 	if (!IS_ERR_OR_NULL(isp->fw_code_region))
+ 		vfree(isp->fw_code_region);
+
++	ipu7_mmu_cleanup(isp->isys->mmu);
++	ipu7_mmu_cleanup(isp->psys->mmu);
++
+ 	ipu7_bus_del_devices(pdev);
+
+ 	pm_runtime_forbid(&pdev->dev);
+@@ -2727,8 +2726,6 @@ static void ipu7_pci_remove(struct pci_dev *pdev)
+
+ 	release_firmware(isp->cpd_fw);
+
+-	ipu7_mmu_cleanup(isp->psys->mmu);
+-	ipu7_mmu_cleanup(isp->isys->mmu);
+ }
+
+ static void ipu7_pci_reset_prepare(struct pci_dev *pdev)
+--
+2.43.0
+
