@@ -22,9 +22,6 @@ struct ipu7_isys_subdev {
 	struct v4l2_ctrl_handler ctrl_handler;
 	void (*ctrl_init)(struct v4l2_subdev *sd);
 	int source;	/* SSI stream source; -1 if unset */
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	bool is_tpg;
-#endif
 };
 
 #define to_ipu7_isys_subdev(__sd)			\

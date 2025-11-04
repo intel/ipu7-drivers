@@ -1422,6 +1422,7 @@ static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 	}
 
 	dev_set_drvdata(dev, psys);
+	mutex_unlock(&ipu7_psys_mutex);
 #ifdef CONFIG_DEBUG_FS
 	psys_fw_log_init(psys);
 	ipu7_psys_init_debugfs(psys);
@@ -1495,11 +1496,16 @@ static irqreturn_t psys_isr_threaded(struct ipu7_bus_device *adev)
 	if (IA_GOFO_FW_BOOT_STATE_IS_CRITICAL(state)) {
 		dev_warn(&psys->dev, "error state %u\n", state);
 	} else {
+		/* Disable irq before clear irq status */
 		status = readl(base + IPU_REG_PSYS_TO_SW_IRQ_CNTL_STATUS);
+		writel(0, base + IPU_REG_PSYS_TO_SW_IRQ_CNTL_ENABLE);
 		writel(status, base + IPU_REG_PSYS_TO_SW_IRQ_CNTL_CLEAR);
 
 		if (status & IRQ_FROM_LOCAL_FW)
 			ipu7_psys_handle_events(psys);
+
+		writel(IRQ_FROM_LOCAL_FW,
+		       base + IPU_REG_PSYS_TO_SW_IRQ_CNTL_ENABLE);
 	}
 
 	pm_runtime_put(dev);
