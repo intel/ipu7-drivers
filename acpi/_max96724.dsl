@@ -15,7 +15,7 @@ Device (DES0)
     }
     Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings
     {
-        CSI2Bus(DeviceInitiated, 0, 4, "\\_SB.PC00.IPU0", 0,,,) // type 0 for CPHY, IPU0 local port 4 remote port 0
+        CSI2Bus(DeviceInitiated, 0, 6, "\\_SB.PC00.IPU0", 0,,,) // type 0 for CPHY, IPU0 local port 6 remote port 0
         I2cSerialBusV2 (
             0x0027,                 // SlaveAddress
             ControllerInitiated,    // SlaveMode
@@ -49,7 +49,7 @@ Device (DES0)
             Package () { "mipi-img-port-1", "PRT1" },
             Package () { "mipi-img-port-2", "PRT2" },
             Package () { "mipi-img-port-3", "PRT3" },
-            Package () { "mipi-img-port-4", "PRT4" },
+            Package () { "mipi-img-port-6", "PRT6" },
         }
     })
     Name (PRT0, Package()
@@ -94,7 +94,7 @@ Device (DES0)
 
     })
 
-    Name (PRT4, Package()
+    Name (PRT6, Package()
     {
         ToUUID("daffd814-6eba-4d8c-8a91-bc9bbf4aa301"),
         Package ()
