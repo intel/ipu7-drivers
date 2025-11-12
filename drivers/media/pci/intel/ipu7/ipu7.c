@@ -47,14 +47,6 @@
 #define IPU_PCI_BAR		0
 #define IPU_PCI_PBBAR		4
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-static const unsigned int ipu7_tpg_offsets[] = {
-	MGC_MG_PORT(0),
-	MGC_MG_PORT(1),
-	MGC_MG_PORT(2),
-};
-#endif
-
 static const unsigned int ipu7_csi_offsets[] = {
 	IPU_CSI_PORT_A_ADDR_OFFSET,
 	IPU_CSI_PORT_B_ADDR_OFFSET,
@@ -2119,11 +2111,6 @@ void ipu_internal_pdata_init(struct ipu_isys_internal_pdata *isys_ipdata,
 {
 	isys_ipdata->csi2.nports = ARRAY_SIZE(ipu7_csi_offsets);
 	isys_ipdata->csi2.offsets = ipu7_csi_offsets;
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	isys_ipdata->tpg.ntpgs = ARRAY_SIZE(ipu7_tpg_offsets);
-	isys_ipdata->tpg.offsets = ipu7_tpg_offsets;
-	isys_ipdata->tpg.sels = NULL;
-#endif
 	isys_ipdata->num_parallel_streams = IPU7_ISYS_NUM_STREAMS;
 	psys_ipdata->hw_variant.spc_offset = IPU7_PSYS_SPC_OFFSET;
 }

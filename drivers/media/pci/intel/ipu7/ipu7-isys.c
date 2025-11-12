@@ -48,9 +48,6 @@
 #include "ipu7-isys-csi2.h"
 #include "ipu7-isys-csi-phy.h"
 #include "ipu7-isys-csi2-regs.h"
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-#include "ipu7-isys-tpg.h"
-#endif
 #include "ipu7-isys-video.h"
 #include "ipu7-platform-regs.h"
 
@@ -88,10 +85,10 @@ isys_complete_ext_device_registration(struct ipu7_isys *isys,
 	}
 
 	isys->csi2[csi2->port].nlanes = csi2->nlanes;
-	if (csi2->bus_type == V4L2_MBUS_CSI2_DPHY)
-		isys->csi2[csi2->port].phy_mode = PHY_MODE_DPHY;
-	else
+	if (csi2->bus_type == V4L2_MBUS_CSI2_CPHY)
 		isys->csi2[csi2->port].phy_mode = PHY_MODE_CPHY;
+	else
+		isys->csi2[csi2->port].phy_mode = PHY_MODE_DPHY;
 
 	return 0;
 
@@ -500,86 +497,6 @@ static int isys_csi2_create_media_links(struct ipu7_isys *isys)
 	return 0;
 }
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-static void isys_tpg_unregister_subdevices(struct ipu7_isys *isys)
-{
-	const struct ipu7_isys_internal_tpg_pdata *tpg_pdata =
-		&isys->pdata->ipdata->tpg;
-	unsigned int i;
-
-	if (!isys->tpg)
-		return;
-
-	for (i = 0; i < tpg_pdata->ntpgs; i++)
-		ipu7_isys_tpg_cleanup(&isys->tpg[i]);
-
-	kfree(isys->tpg);
-	isys->tpg = NULL;
-}
-
-static int isys_tpg_register_subdevices(struct ipu7_isys *isys)
-{
-	const struct ipu7_isys_internal_tpg_pdata *tpg_pdata =
-		&isys->pdata->ipdata->tpg;
-	unsigned int i;
-	int ret;
-
-	isys->tpg = kcalloc(tpg_pdata->ntpgs, sizeof(*isys->tpg), GFP_KERNEL);
-	if (!isys->tpg)
-		return -ENOMEM;
-
-	for (i = 0; i < tpg_pdata->ntpgs; i++) {
-		ret = ipu7_isys_tpg_init(&isys->tpg[i], isys,
-					 isys->pdata->base +
-					 tpg_pdata->offsets[i],
-					 tpg_pdata->sels ?
-					 (isys->pdata->base +
-					  tpg_pdata->sels[i]) : NULL, i);
-		if (ret)
-			goto fail;
-	}
-
-	return 0;
-
-fail:
-	while (i--)
-		ipu7_isys_tpg_cleanup(&isys->tpg[i]);
-
-	kfree(isys->tpg);
-	isys->tpg = NULL;
-
-	return ret;
-}
-
-static int isys_tpg_create_media_links(struct ipu7_isys *isys)
-{
-	const struct ipu7_isys_internal_tpg_pdata *tpg_pdata =
-		&isys->pdata->ipdata->tpg;
-	struct device *dev = &isys->adev->auxdev.dev;
-	struct ipu7_isys_tpg *tpg;
-	struct media_entity *sd;
-	unsigned int i;
-	int ret;
-
-	for (i = 0; i < tpg_pdata->ntpgs; i++) {
-		tpg = &isys->tpg[i];
-		sd = &tpg->asd.sd.entity;
-		tpg->av = &isys->csi2[tpg->index].av[0];
-
-		ret = media_create_pad_link(sd, TPG_PAD_SOURCE,
-					    &tpg->av->vdev.entity,
-					    TPG_PAD_SOURCE, 0);
-		if (ret) {
-			dev_err(dev, "TPG can't create link\n");
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-#endif
-
 #if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
 static int isys_register_devices(struct ipu7_isys *isys)
 {
@@ -682,31 +599,13 @@ static int isys_register_devices(struct ipu7_isys *isys)
 	if (ret)
 		goto out_csi2_unregister_subdevices;
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	ret = isys_tpg_register_subdevices(isys);
-	if (!ret)
-		ret = isys_tpg_create_media_links(isys);
-
-	if (ret)
-		goto out_tpg_unregister_subdevices;
-
-#endif
-
 	isys_register_ext_subdevs(isys);
 	ret = v4l2_device_register_subdev_nodes(&isys->v4l2_dev);
 	if (ret)
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-		goto out_tpg_unregister_subdevices;
-#else
 		goto out_csi2_unregister_subdevices;
-#endif
 
 	return 0;
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-out_tpg_unregister_subdevices:
-	isys_tpg_unregister_subdevices(isys);
-#endif
 out_csi2_unregister_subdevices:
 	isys_csi2_unregister_subdevices(isys);
 
@@ -730,9 +629,6 @@ static void isys_unregister_devices(struct ipu7_isys *isys)
 {
 	isys_unregister_video_devices(isys);
 	isys_csi2_unregister_subdevices(isys);
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	isys_tpg_unregister_subdevices(isys);
-#endif
 	v4l2_device_unregister(&isys->v4l2_dev);
 	media_device_unregister(&isys->media_dev);
 	media_device_cleanup(&isys->media_dev);
@@ -1324,9 +1220,6 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 	struct ipu7_isys_csi2 *csi2 = NULL;
 	struct ia_gofo_msg_err err_info;
 	struct ipu7_insys_resp *resp;
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	struct ipu7_isys_tpg *tpg = NULL;
-#endif
 	u64 ts;
 
 	if (!isys->adev->syscom)
@@ -1388,17 +1281,8 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 
 	stream->error = err_info.err_code;
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	if (stream->asd) {
-		if (stream->asd->is_tpg)
-			tpg = ipu7_isys_subdev_to_tpg(stream->asd);
-		else
-			csi2 = ipu7_isys_subdev_to_csi2(stream->asd);
-	}
-#else
 	if (stream->asd)
 		csi2 = ipu7_isys_subdev_to_csi2(stream->asd);
-#endif
 
 	switch (resp->type) {
 	case IPU_INSYS_RESP_TYPE_STREAM_OPEN_DONE:
@@ -1442,11 +1326,6 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 		if (csi2)
 			ipu7_isys_csi2_sof_event_by_stream(stream);
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-		if (tpg)
-			ipu7_isys_tpg_sof_event_by_stream(stream);
-
-#endif
 		stream->seq[stream->seq_index].sequence =
 			atomic_read(&stream->sequence) - 1U;
 		stream->seq[stream->seq_index].timestamp = ts;
@@ -1461,11 +1340,6 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 		if (csi2)
 			ipu7_isys_csi2_eof_event_by_stream(stream);
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-		if (tpg)
-			ipu7_isys_tpg_eof_event_by_stream(stream);
-
-#endif
 		dev_dbg(dev, "eof: stream %d(index %u) ts 0x%16.16llx\n",
 			resp->stream_id,
 			stream->seq[stream->seq_index].sequence, ts);

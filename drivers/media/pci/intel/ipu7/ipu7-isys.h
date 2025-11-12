@@ -23,9 +23,6 @@
 
 #include "ipu7.h"
 #include "ipu7-isys-csi2.h"
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-#include "ipu7-isys-tpg.h"
-#endif
 #include "ipu7-isys-video.h"
 
 #ifdef CONFIG_DEBUG_FS
@@ -91,9 +88,6 @@ struct isys_fw_log {
  * @stream_mutex: serialise stream start and stop, queueing requests
  * @pdata: platform data pointer
  * @csi2: CSI-2 receivers
- #ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
- * @tpg: test pattern generators
- #endif
  */
 struct ipu7_isys {
 	struct media_device media_dev;
@@ -122,9 +116,6 @@ struct ipu7_isys {
 	struct ipu7_isys_pdata *pdata;
 
 	struct ipu7_isys_csi2 *csi2;
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	struct ipu7_isys_tpg *tpg;
-#endif
 	struct isys_fw_log *fw_log;
 
 	struct list_head requests;

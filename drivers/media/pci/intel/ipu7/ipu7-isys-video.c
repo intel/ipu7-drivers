@@ -726,15 +726,8 @@ int ipu7_isys_video_prepare_stream(struct ipu7_isys_video *av,
 
 	stream->stream_source = stream->asd->source;
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	if (!stream->asd->is_tpg) {
-		csi2 = ipu7_isys_subdev_to_csi2(stream->asd);
-		csi2->receiver_errors = 0;
-	}
-#else
 	csi2 = ipu7_isys_subdev_to_csi2(stream->asd);
 	csi2->receiver_errors = 0;
-#endif
 	stream->source_entity = source_entity;
 
 	dev_dbg(&av->isys->adev->auxdev.dev,
@@ -908,51 +901,6 @@ int ipu7_isys_video_set_streaming(struct ipu7_isys_video *av, int state,
 	if (WARN(!stream->source_entity, "No source entity for stream\n"))
 		return -ENODEV;
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	if (stream->asd->is_tpg) {
-		sd = &stream->asd->sd;
-		r_pad = media_pad_remote_pad_first(&av->pad);
-		r_stream =
-			ipu7_isys_get_src_stream_by_src_pad(sd, r_pad->index);
-
-		if (!state) {
-			stop_streaming_firmware(av);
-			dev_dbg(dev, "disable streams 0x%lx of %s\n",
-				BIT(r_stream), sd->name);
-			ret = v4l2_subdev_disable_streams(sd, r_pad->index,
-							  BIT(r_stream));
-			if (ret)
-				dev_err(dev, "disable streams of %s failed\n",
-					sd->name);
-
-			close_streaming_firmware(av);
-		} else {
-			ret = start_stream_firmware(av, bl);
-			if (ret) {
-				dev_err(dev, "start FW stream failed\n");
-				return ret;
-			}
-
-			dev_dbg(dev, "set stream: source %d, handle %d\n",
-				stream->stream_source, stream->stream_handle);
-
-			dev_dbg(dev, "enable streams 0x%lx of %s\n",
-				BIT(r_stream), sd->name);
-			/* start sub-device which connects with video */
-			ret = v4l2_subdev_enable_streams(sd, r_pad->index,
-							 BIT(r_stream));
-			if (ret) {
-				dev_err(dev, "enable streams of %s failed\n",
-					sd->name);
-				goto out_media_entity_stop_streaming_firmware;
-			}
-		}
-		av->streaming = state;
-
-		return 0;
-	}
-
-#endif
 	sd = &stream->asd->sd;
 	r_pad = media_pad_remote_pad_first(&av->pad);
 	r_stream = get_remote_pad_stream(r_pad);
@@ -1140,34 +1088,6 @@ int ipu7_isys_setup_video(struct ipu7_isys_video *av,
 
 	remote_sd = media_entity_to_v4l2_subdev(remote_pad->entity);
 	asd = to_ipu7_isys_subdev(remote_sd);
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-
-	if (strncmp(remote_pad->entity->name, "Intel IPU7 TPG",
-		    strlen("Intel IPU7 TPG")) == 0) {
-		dev_dbg(dev, "Find TPG:%s stream\n", remote_sd->name);
-
-		av->vc = 0;
-		av->dt = ipu7_isys_mbus_code_to_mipi(pfmt->code);
-		ret = video_device_pipeline_alloc_start(&av->vdev);
-		if (ret < 0) {
-			dev_dbg(dev, "media pipeline start failed\n");
-			return ret;
-		}
-
-		*source_entity = remote_pad->entity;
-		av->stream = ipu7_isys_get_stream(av, asd);
-		if (!av->stream) {
-			video_device_pipeline_stop(&av->vdev);
-			dev_err(dev, "no available stream for firmware\n");
-			return -EINVAL;
-		}
-
-		av->stream->asd->is_tpg = true;
-		*nr_queues = 1;
-
-		return 0;
-	}
-#endif
 
 	source_pad = media_pad_remote_pad_first(&remote_pad->entity->pads[0]);
 	if (!source_pad) {
