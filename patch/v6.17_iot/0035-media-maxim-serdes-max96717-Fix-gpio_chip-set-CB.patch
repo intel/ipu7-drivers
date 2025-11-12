@@ -1,0 +1,28 @@
+From 1614b6ab4ee4b365d0e173c99a005c6479fcb2cf Mon Sep 17 00:00:00 2001
+From: "Yew, Chang Ching" <chang.ching.yew@intel.com>
+Date: Thu, 28 Aug 2025 02:23:10 +0800
+Subject: [PATCH 35/61] media: maxim-serdes: max96717: Fix gpio_chip set CB
+
+---
+ drivers/media/i2c/maxim-serdes/max96717.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/media/i2c/maxim-serdes/max96717.c b/drivers/media/i2c/maxim-serdes/max96717.c
+index 02e81a93b5446..291380257fe28 100644
+--- a/drivers/media/i2c/maxim-serdes/max96717.c
++++ b/drivers/media/i2c/maxim-serdes/max96717.c
+@@ -1573,7 +1573,11 @@ static int max96717_gpiochip_probe(struct max96717_priv *priv)
+ 		.direction_input = max96717_gpio_direction_input,
+ 		.direction_output = max96717_gpio_direction_output,
+ 		.get = max96717_gpio_get,
++#if 0
+ 		.set_rv = max96717_gpio_set,
++#else
++		.set = max96717_gpio_set,
++#endif
+ 	};
+ 
+ 	return devm_gpiochip_add_data(dev, &priv->gc, priv);
+-- 
+2.50.1
+

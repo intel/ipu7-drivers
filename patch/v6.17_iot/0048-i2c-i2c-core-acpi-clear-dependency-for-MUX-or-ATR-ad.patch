@@ -1,0 +1,67 @@
+From ea730c2e674c6168e03a0325b387760c0aaab2db Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Thu, 11 Sep 2025 08:38:49 +0800
+Subject: [PATCH 48/61] i2c: i2c-core-acpi: clear dependency for MUX or ATR
+ adapters
+
+In ACPI table, devices that should residing on parent MUX or ATR
+adapters have dependencies on parent devices. Hence, clear the
+dependencies if the adapter created is based by parent through
+ATR or MUX. ACPI driver can then call register client for the
+devices
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/i2c/i2c-core-acpi.c | 29 ++++++++++++++++++++++++++++-
+ 1 file changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/i2c/i2c-core-acpi.c b/drivers/i2c/i2c-core-acpi.c
+index ed90858a27b7b..3cb316769ed16 100644
+--- a/drivers/i2c/i2c-core-acpi.c
++++ b/drivers/i2c/i2c-core-acpi.c
+@@ -285,6 +285,32 @@ static void i2c_acpi_register_device(struct i2c_adapter *adapter,
+ 	if (acpi_quirk_skip_i2c_client_enumeration(adev))
+ 		return;
+ 
++	/* Check if Device is on ATR or MUX adapter */
++	if (adapter->is_atr || adapter->is_mux) {
++		u32 channel;
++
++		if (fwnode_property_present(&adev->fwnode, "channel")) {
++			if (fwnode_property_read_u32(&adev->fwnode, "channel", &channel)) {
++				dev_err(&adev->dev, "failed to read channel property\n");
++				return;
++			}
++
++			if (adapter->chan_id != channel) {
++				dev_err(&adev->dev, "device is not on current adapter %d\n", adapter->chan_id);
++				return;
++			} else
++				acpi_dev_clear_dependencies(ACPI_COMPANION(adapter->dev.parent));
++
++			if (adev->dep_unmet) {
++				dev_err(&adev->dev, "device has unmet dependencies\n");
++				return;
++			}
++		} else {
++			dev_err(&adev->dev, "channel property not present\n");
++			return;
++		}
++	}
++
+ 	adev->power.flags.ignore_parent = true;
+ 	acpi_device_set_enumerated(adev);
+ 
+@@ -323,7 +349,8 @@ void i2c_acpi_register_devices(struct i2c_adapter *adap)
+ 	acpi_status status;
+ 
+ 	if (!has_acpi_companion(&adap->dev))
+-		return;
++		if (!adap->dev.fwnode)
++			return;
+ 
+ 	status = acpi_walk_namespace(ACPI_TYPE_DEVICE, ACPI_ROOT_OBJECT,
+ 				     I2C_ACPI_MAX_SCAN_DEPTH,
+-- 
+2.50.1
+

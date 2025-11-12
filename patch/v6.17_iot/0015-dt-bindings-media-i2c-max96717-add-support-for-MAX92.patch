@@ -1,0 +1,43 @@
+From 27515fa8b52a1dc6414e4b8161d696fd8701ea3c Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Fri, 18 Jul 2025 18:24:41 +0300
+Subject: [PATCH 15/61] dt-bindings: media: i2c: max96717: add support for
+ MAX9295A
+
+MAX9295A is an older variant of the MAX96717 which does not support
+tunnel mode.
+
+Document the compatibility.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+---
+ .../devicetree/bindings/media/i2c/maxim,max96717.yaml      | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+index 9afaa8a7a3f52..78ecbab8205a5 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+@@ -25,12 +25,17 @@ description:
+ 
+   The GMSL2 serial link operates at a fixed rate of 3Gbps or 6Gbps in the
+   forward direction and 187.5Mbps in the reverse direction.
++
+   MAX96717F only supports a fixed rate of 3Gbps in the forward direction.
+ 
++  MAX9295A only supports pixel mode.
++
+ properties:
+   compatible:
+     oneOf:
+-      - const: maxim,max96717f
++      - enum:
++          - maxim,max9295a
++          - maxim,max96717f
+       - items:
+           - enum:
+               - maxim,max96717
+-- 
+2.50.1
+

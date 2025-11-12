@@ -1,0 +1,41 @@
+From c1d47ad533d0eac9ff401a767162622b43513179 Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Fri, 12 Sep 2025 04:22:16 +0800
+Subject: [PATCH 57/61] media: i2c: maxim-serdes: max_ser: retrieve i2c-gate
+ from fwnode
+
+In ACPI, there are no child node named i2c-gate available. instead,
+store i2c-gate information in property
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/media/i2c/maxim-serdes/max_ser.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/maxim-serdes/max_ser.c b/drivers/media/i2c/maxim-serdes/max_ser.c
+index 583f3c2a24243..9c58627dc60cf 100644
+--- a/drivers/media/i2c/maxim-serdes/max_ser.c
++++ b/drivers/media/i2c/maxim-serdes/max_ser.c
+@@ -434,7 +434,8 @@ static int max_ser_i2c_mux_init(struct max_ser_priv *priv)
+ 
+ static int max_ser_i2c_adapter_init(struct max_ser_priv *priv)
+ {
+-	if (device_get_named_child_node(priv->dev, "i2c-gate"))
++	if (device_get_named_child_node(priv->dev, "i2c-gate") ||
++		fwnode_property_present(dev_fwnode(priv->dev), "i2c-gate"))
+ 		return max_ser_i2c_mux_init(priv);
+ 	else
+ 		return max_ser_i2c_atr_init(priv);
+@@ -442,7 +443,8 @@ static int max_ser_i2c_adapter_init(struct max_ser_priv *priv)
+ 
+ static void max_ser_i2c_adapter_deinit(struct max_ser_priv *priv)
+ {
+-	if (device_get_named_child_node(priv->dev, "i2c-gate"))
++	if (device_get_named_child_node(priv->dev, "i2c-gate") ||
++		fwnode_property_present(dev_fwnode(priv->dev), "i2c-gate"))
+ 		max_ser_i2c_mux_deinit(priv);
+ 	else
+ 		max_ser_i2c_atr_deinit(priv);
+-- 
+2.50.1
+

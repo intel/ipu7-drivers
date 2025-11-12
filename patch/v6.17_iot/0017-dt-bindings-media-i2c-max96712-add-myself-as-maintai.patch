@@ -1,0 +1,48 @@
+From 95e4d6cfef5e69a9ba79c40babb4c43b9c1bd83f Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Fri, 18 Jul 2025 18:24:43 +0300
+Subject: [PATCH 17/61] dt-bindings: media: i2c: max96712: add myself as
+ maintainer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Analog Devices is taking responsability for the maintenance of the Maxim
+GMSL2/3 devices.
+Add myself to the maintainers list and to the device tree bindings.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+Acked-by: Niklas Söderlund <niklas.soderlund+renesas@ragnatech.se>
+---
+ Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml | 1 +
+ MAINTAINERS                                                     | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+index 26f85151afbd3..efdece2b33b96 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+@@ -9,6 +9,7 @@ title: Quad GMSL2 to CSI-2 Deserializer with GMSL1 Compatibility
+ 
+ maintainers:
+   - Niklas Söderlund <niklas.soderlund+renesas@ragnatech.se>
++  - Cosmin Tanislav <cosmin.tanislav@analog.com>
+ 
+ description: |
+   The MAX96712 deserializer converts GMSL2 or GMSL1 serial inputs into MIPI
+diff --git a/MAINTAINERS b/MAINTAINERS
+index d35d4654ce667..d2273e53e12af 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -14953,6 +14953,7 @@ F:	drivers/media/i2c/max9286.c
+ 
+ MAX96712 QUAD GMSL2 DESERIALIZER DRIVER
+ M:	Niklas Söderlund <niklas.soderlund@ragnatech.se>
++M:	Cosmin Tanislav <cosmin.tanislav@analog.com>
+ L:	linux-media@vger.kernel.org
+ S:	Maintained
+ F:	Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+-- 
+2.50.1
+

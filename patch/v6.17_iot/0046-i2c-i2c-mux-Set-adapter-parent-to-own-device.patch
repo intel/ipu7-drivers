@@ -1,0 +1,44 @@
+From e33e0d0215d5bc153c7f8d8bfacbbdef5e16e94f Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Thu, 11 Sep 2025 07:05:20 +0800
+Subject: [PATCH 46/61] i2c: i2c-mux: Set adapter parent to own device
+
+Work for GMSL case. Need further checking on other use case
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/i2c/i2c-mux.c | 11 +++--------
+ 1 file changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/i2c/i2c-mux.c b/drivers/i2c/i2c-mux.c
+index 4d8690981a55d..a78aea2fe0701 100644
+--- a/drivers/i2c/i2c-mux.c
++++ b/drivers/i2c/i2c-mux.c
+@@ -317,7 +317,7 @@ int i2c_mux_add_adapter(struct i2c_mux_core *muxc,
+ 	priv->adap.owner = THIS_MODULE;
+ 	priv->adap.algo = &priv->algo;
+ 	priv->adap.algo_data = priv;
+-	priv->adap.dev.parent = &parent->dev;
++	priv->adap.dev.parent = muxc->dev;
+ 	priv->adap.retries = parent->retries;
+ 	priv->adap.timeout = parent->timeout;
+ 	priv->adap.quirks = parent->quirks;
+@@ -369,13 +369,8 @@ int i2c_mux_add_adapter(struct i2c_mux_core *muxc,
+ 		of_node_put(mux_node);
+ 	}
+ 
+-	/*
+-	 * Associate the mux channel with an ACPI node.
+-	 */
+-	if (has_acpi_companion(muxc->dev))
+-		acpi_preset_companion(&priv->adap.dev,
+-				      ACPI_COMPANION(muxc->dev),
+-				      chan_id);
++	if (dev_fwnode(muxc->dev))
++		device_set_node(&priv->adap.dev, dev_fwnode(muxc->dev));
+ 
+ 	if (force_nr) {
+ 		priv->adap.nr = force_nr;
+-- 
+2.50.1
+

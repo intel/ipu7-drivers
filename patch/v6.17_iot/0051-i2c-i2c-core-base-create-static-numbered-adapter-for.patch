@@ -1,0 +1,31 @@
+From 868d1fd916327274095ca7eb97a6e61bae929d10 Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Thu, 11 Sep 2025 09:30:12 +0800
+Subject: [PATCH 51/61] i2c: i2c-core-base: create static numbered adapter for
+ ACPI devices
+
+Utilize i2c_add_numbered_adapter if static numbering is obtained from
+FWnode.
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/i2c/i2c-core-base.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/i2c/i2c-core-base.c b/drivers/i2c/i2c-core-base.c
+index ecca8c006b020..37475998b439e 100644
+--- a/drivers/i2c/i2c-core-base.c
++++ b/drivers/i2c/i2c-core-base.c
+@@ -1664,6 +1664,9 @@ int i2c_add_adapter(struct i2c_adapter *adapter)
+ 		return __i2c_add_numbered_adapter(adapter);
+ 	}
+ 
++	if (adapter->is_atr && adapter->nr > 0)
++		return __i2c_add_numbered_adapter(adapter);
++
+ 	mutex_lock(&core_lock);
+ 	id = idr_alloc(&i2c_adapter_idr, adapter,
+ 		       __i2c_first_dynamic_bus_num, 0, GFP_KERNEL);
+-- 
+2.50.1
+

@@ -1,0 +1,44 @@
+From 960c65d747eb01419daab96301d2dba7ee894984 Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Fri, 18 Jul 2025 18:24:38 +0300
+Subject: [PATCH 12/61] dt-bindings: media: i2c: max96717: add myself as
+ maintainer
+
+Analog Devices is taking responsability for the maintenance of the Maxim
+GMSL2/3 devices.
+Add myself to the maintainers list and to the device tree bindings.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+---
+ Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml | 1 +
+ MAINTAINERS                                                     | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+index d1e8ba6e368ec..15ab37702a927 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+@@ -9,6 +9,7 @@ title: MAX96717 CSI-2 to GMSL2 Serializer
+ 
+ maintainers:
+   - Julien Massot <julien.massot@collabora.com>
++  - Cosmin Tanislav <cosmin.tanislav@analog.com>
+ 
+ description:
+   The MAX96717 serializer converts MIPI CSI-2 D-PHY formatted input
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 97d958c945e4f..d35d4654ce667 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -14967,6 +14967,7 @@ F:	drivers/media/i2c/max96714.c
+ 
+ MAX96717 GMSL2 SERIALIZER DRIVER
+ M:	Julien Massot <julien.massot@collabora.com>
++M:	Cosmin Tanislav <cosmin.tanislav@analog.com>
+ L:	linux-media@vger.kernel.org
+ S:	Maintained
+ F:	Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+-- 
+2.50.1
+
