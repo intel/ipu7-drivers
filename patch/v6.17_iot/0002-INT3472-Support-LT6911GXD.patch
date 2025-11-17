@@ -1,7 +1,7 @@
-From 0bd06fd0601c1a854afb09f7876f79b92e9af70e Mon Sep 17 00:00:00 2001
+From 7c2ab36f53b6c3a901dadb34024b0a9c1de92436 Mon Sep 17 00:00:00 2001
 From: linya14x <linx.yang@intel.com>
 Date: Mon, 8 Sep 2025 15:41:24 +0800
-Subject: [PATCH] INT3472: Support LT6911GXD
+Subject: [PATCH 02/10] INT3472: Support LT6911GXD
 
 Signed-off-by: linya14x <linx.yang@intel.com>
 ---
@@ -15,7 +15,7 @@ index 4c0aed6e62..cdbb3a7b16 100644
 +++ b/drivers/platform/x86/intel/int3472/discrete.c
 @@ -177,6 +177,10 @@ static void int3472_get_con_id_and_polarity(struct int3472_discrete_device *int3
  	}
-
+ 
  	switch (*type) {
 +	case INT3472_GPIO_TYPE_HOTPLUG_DETECT:
 +		*con_id = "hpd";
@@ -30,12 +30,12 @@ index 4c0aed6e62..cdbb3a7b16 100644
  	case INT3472_GPIO_TYPE_POWERDOWN:
 +	case INT3472_GPIO_TYPE_HOTPLUG_DETECT:
  		ret = skl_int3472_map_gpio_to_sensor(int3472, agpio, con_id, gpio_flags);
-		if (ret)
+ 		if (ret)
  			err_msg = "Failed to map GPIO pin to sensor\n";
 @@ -430,7 +435,7 @@ static int skl_int3472_discrete_probe(struct platform_device *pdev)
  		return ret;
  	}
-
+ 
 -	if (cldb.control_logic_type != 1) {
 +	if (cldb.control_logic_type != 1 && cldb.control_logic_type != 5) {
  		dev_err(&pdev->dev, "Unsupported control logic type %u\n",
@@ -50,9 +50,9 @@ index 78276a11c4..1571e9157f 100644
  #define INT3472_GPIO_TYPE_PRIVACY_LED				0x0d
  #define INT3472_GPIO_TYPE_HANDSHAKE				0x12
 +#define INT3472_GPIO_TYPE_HOTPLUG_DETECT			0x13
-
+ 
  #define INT3472_PDEV_MAX_NAME_LEN				23
  #define INT3472_MAX_SENSOR_GPIOS				3
---
+-- 
 2.43.0
 
