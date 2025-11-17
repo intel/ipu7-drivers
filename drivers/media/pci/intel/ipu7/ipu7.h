@@ -208,14 +208,6 @@ struct ipu7_isys_internal_csi2_pdata {
 	u32 gpreg;
 };
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-struct ipu7_isys_internal_tpg_pdata {
-	u32 ntpgs;
-	u32 const *offsets;
-	u32 *sels;
-};
-#endif
-
 struct ipu7_hw_variants {
 	unsigned long offset;
 	u32 nr_mmus;
@@ -228,9 +220,6 @@ struct ipu7_hw_variants {
 
 struct ipu_isys_internal_pdata {
 	struct ipu7_isys_internal_csi2_pdata csi2;
-#ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
-	struct ipu7_isys_internal_tpg_pdata tpg;
-#endif
 	struct ipu7_hw_variants hw_variant;
 	u32 num_parallel_streams;
 	u32 isys_dma_overshoot;
