@@ -1,0 +1,36 @@
+From f751c55e8a85aff1844f8fb473fca5f460e71027 Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Thu, 11 Sep 2025 06:22:11 +0800
+Subject: [PATCH 33/51] media: v4l2_async: skip unbind if no subdev available
+
+In GMSL case, if device is not found as described in SSDT,
+it will trigger unbind_subdev, which there are no subdev to
+be unbind to begin with. Directly return to avoid calling
+unbind or unregister_subdev to prevent kenel panic.
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/media/v4l2-core/v4l2-async.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/media/v4l2-core/v4l2-async.c b/drivers/media/v4l2-core/v4l2-async.c
+index ee884a8221fbd..f9392f8ca8fe1 100644
+--- a/drivers/media/v4l2-core/v4l2-async.c
++++ b/drivers/media/v4l2-core/v4l2-async.c
+@@ -460,8 +460,13 @@ v4l2_async_nf_try_all_subdevs(struct v4l2_async_notifier *notifier)
+ static void v4l2_async_unbind_subdev_one(struct v4l2_async_notifier *notifier,
+ 					 struct v4l2_async_connection *asc)
+ {
++	if (!asc)
++		return;
++
+ 	list_move_tail(&asc->asc_entry, &notifier->waiting_list);
+ 	if (list_is_singular(&asc->asc_subdev_entry)) {
++		if (!asc->sd)
++			return;
+ 		v4l2_async_nf_call_unbind(notifier, asc->sd, asc);
+ 		v4l2_device_unregister_subdev(asc->sd);
+ 		asc->sd = NULL;
+-- 
+2.51.1
+

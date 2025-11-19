@@ -1,0 +1,32 @@
+From c9455a03dd5b326e9ca2d3cfbad7bb0652632997 Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Thu, 11 Sep 2025 08:50:52 +0800
+Subject: [PATCH 47/51] media: i2c: maxim-serdes: max96717: add acpi condition
+ for pintrl_ops
+
+pinconf_generic_dt_xxx only handled OF node, calling it in ACPI might
+cause failure.
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/media/i2c/maxim-serdes/max96717.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/media/i2c/maxim-serdes/max96717.c b/drivers/media/i2c/maxim-serdes/max96717.c
+index ba4923874114b..643e2d3fc792b 100644
+--- a/drivers/media/i2c/maxim-serdes/max96717.c
++++ b/drivers/media/i2c/maxim-serdes/max96717.c
+@@ -1341,8 +1341,10 @@ static const struct pinctrl_ops max96717_ctrl_ops = {
+ 	.get_groups_count = max96717_ctrl_get_groups_count,
+ 	.get_group_name = max96717_ctrl_get_group_name,
+ 	.get_group_pins = max96717_ctrl_get_group_pins,
++#ifndef CONFIG_ACPI
+ 	.dt_node_to_map = pinconf_generic_dt_node_to_map_pin,
+ 	.dt_free_map = pinconf_generic_dt_free_map,
++#endif
+ };
+ 
+ static const struct pinconf_ops max96717_conf_ops = {
+-- 
+2.51.1
+

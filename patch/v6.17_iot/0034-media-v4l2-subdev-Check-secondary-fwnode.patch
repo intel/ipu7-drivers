@@ -1,0 +1,31 @@
+From a9a48148c33b1489155aba60c5f57e9bf3729af5 Mon Sep 17 00:00:00 2001
+From: Khai Wen Ng <khai.wen.ng@intel.com>
+Date: Thu, 11 Sep 2025 06:33:35 +0800
+Subject: [PATCH 34/51] media: v4l2-subdev: Check secondary fwnode
+
+Look for secondary fwnode in v4l2_subdev_get_fwnode_pad_1_to_1
+
+Signed-off-by: Khai Wen Ng <khai.wen.ng@intel.com>
+---
+ drivers/media/v4l2-core/v4l2-subdev.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/v4l2-core/v4l2-subdev.c b/drivers/media/v4l2-core/v4l2-subdev.c
+index 60a05561f3055..f95473826e391 100644
+--- a/drivers/media/v4l2-core/v4l2-subdev.c
++++ b/drivers/media/v4l2-core/v4l2-subdev.c
+@@ -1232,7 +1232,10 @@ int v4l2_subdev_get_fwnode_pad_1_to_1(struct media_entity *entity,
+ 	fwnode = fwnode_graph_get_port_parent(endpoint->local_fwnode);
+ 	fwnode_handle_put(fwnode);
+ 
+-	if (device_match_fwnode(sd->dev, fwnode))
++	if (device_match_fwnode(sd->dev, fwnode) || device_match_fwnode(sd->dev, fwnode))
++		return endpoint->port;
++
++	if (sd->fwnode->secondary == endpoint->local_fwnode || sd->fwnode->secondary == fwnode)
+ 		return endpoint->port;
+ 
+ 	return -ENXIO;
+-- 
+2.51.1
+

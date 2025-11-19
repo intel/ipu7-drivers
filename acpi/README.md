@@ -5,13 +5,13 @@ This directory contains imaging specific ACPI SSDT ASL sources
 Table of sensor ASL sources
 | File          | Component                                   |
 |---------------|---------------------------------------------|
-| isx031.dsl    | 4x D3 ISX031 sensor with MAX9295 serializer |
+| isx031.asl    | 4x D3 ISX031 sensor with MAX9295 serializer |
 
 Table of common ASL include sources
 | File          | Component                   |
 |---------------|-----------------------------|
-| _ipu0.dsl     | IPU7                        |
-| _max96724.dsl | MAX96724 GMSL2 deserializer |
+| _ipu0.asl     | IPU7                        |
+| _max96724.asl | MAX96724 GMSL2 deserializer |
 
 ## How to compile ACPI ASL source
 1. Install acpica tools version 20250807 https://github.com/acpica/acpica/releases/tag/20250807
@@ -25,7 +25,7 @@ Table of common ASL include sources
 
 2. Compile ASL source into AML file
 ```sh
-iasl isx031.dsl
+iasl isx031.asl
 ```
 
 ## How to load imaging SSDT at boot time
