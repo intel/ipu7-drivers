@@ -576,7 +576,7 @@ DefinitionBlock ("", "SSDT", 2, "", "IMG_PTL", 0x20250920)
             }
             Method (_HID, 0, NotSerialized)  // _HID: Hardware ID
             {
-                Return ("INTC1031") // ISX031
+                Return ("INTC113C") // ISX031
             }
             Name (_DEP, Package (0x01)  // _DEP: Dependencies
             {
@@ -627,7 +627,7 @@ DefinitionBlock ("", "SSDT", 2, "", "IMG_PTL", 0x20250920)
             }
             Method (_HID, 0, NotSerialized)  // _HID: Hardware ID
             {
-                Return ("INTC1031") // ISX031
+                Return ("INTC113C") // ISX031
             }
             Name (_DEP, Package (0x01)  // _DEP: Dependencies
             {
@@ -678,7 +678,7 @@ DefinitionBlock ("", "SSDT", 2, "", "IMG_PTL", 0x20250920)
             }
             Method (_HID, 0, NotSerialized)  // _HID: Hardware ID
             {
-                Return ("INTC1031") // ISX031
+                Return ("INTC113C") // ISX031
             }
             Name (_DEP, Package (0x01)  // _DEP: Dependencies
             {
@@ -729,7 +729,7 @@ DefinitionBlock ("", "SSDT", 2, "", "IMG_PTL", 0x20250920)
             }
             Method (_HID, 0, NotSerialized)  // _HID: Hardware ID
             {
-                Return ("INTC1031") // ISX031
+                Return ("INTC113C") // ISX031
             }
             Name (_DEP, Package (0x01)  // _DEP: Dependencies
             {
@@ -780,7 +780,7 @@ DefinitionBlock ("", "SSDT", 2, "", "IMG_PTL", 0x20250920)
             }
             Method (_HID, 0, NotSerialized)  // _HID: Hardware ID
             {
-                Return ("INTC1031") // ISX031
+                Return ("INTC113C") // ISX031
             }
             Name (_DEP, Package (0x01)  // _DEP: Dependencies
             {
@@ -831,7 +831,7 @@ DefinitionBlock ("", "SSDT", 2, "", "IMG_PTL", 0x20250920)
             }
             Method (_HID, 0, NotSerialized)  // _HID: Hardware ID
             {
-                Return ("INTC1031") // ISX031
+                Return ("INTC113C") // ISX031
             }
             Name (_DEP, Package (0x01)  // _DEP: Dependencies
             {
@@ -882,7 +882,7 @@ DefinitionBlock ("", "SSDT", 2, "", "IMG_PTL", 0x20250920)
             }
             Method (_HID, 0, NotSerialized)  // _HID: Hardware ID
             {
-                Return ("INTC1031") // ISX031
+                Return ("INTC113C") // ISX031
             }
             Name (_DEP, Package (0x01)  // _DEP: Dependencies
             {
@@ -933,7 +933,7 @@ DefinitionBlock ("", "SSDT", 2, "", "IMG_PTL", 0x20250920)
             }
             Method (_HID, 0, NotSerialized)  // _HID: Hardware ID
             {
-                Return ("INTC1031") // ISX031
+                Return ("INTC113C") // ISX031
             }
             Name (_DEP, Package (0x01)  // _DEP: Dependencies
             {
