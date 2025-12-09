@@ -40,7 +40,7 @@
 #include "ipu7-mmu.h"
 #include "ipu7-platform-regs.h"
 
-#if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
+#if IS_ENABLED(CONFIG_INTEL_IPU_ACPI)
 #include <media/ipu-acpi.h>
 
 #endif
@@ -2613,7 +2613,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto out_ipu_bus_del_devices;
 	}
 
-#if IS_ENABLED(CONFIG_INTEL_IPU7_ACPI)
+#if IS_ENABLED(CONFIG_INTEL_IPU_ACPI)
 	ipu_get_acpi_devices(&dev->platform_data);
 #endif
 	isp->isys = ipu7_isys_init(pdev, dev, isys_ctrl, isys_base,

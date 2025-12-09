@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2016-2024 Intel Corporation.
+ * Copyright (c) 2016-2025 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version
@@ -13,7 +13,9 @@
  *
  */
 #include <linux/platform_device.h>
-#include <linux/version.h>
+#include <linux/pci.h>
+#include <linux/gpio/consumer.h>
+
 #include <media/ipu-acpi-pdata.h>
 #include <media/ipu-acpi.h>
 
@@ -365,8 +367,12 @@ int ipu_acpi_get_dep_data(struct device *dev,
 			continue;
 
 		/* Process device IN3472 created by acpi */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0)
+		if (acpi_bus_get_device(dep_devices.handles[i], &device)) {
+#else
 		device = acpi_fetch_acpi_dev(dep_devices.handles[i]);
 		if (!device) {
+#endif
 			pr_err("IPU ACPI: Failed to get ACPI device");
 			return -ENODEV;
 		}
