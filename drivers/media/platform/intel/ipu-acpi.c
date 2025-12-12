@@ -32,15 +32,10 @@
 #include <linux/clkdev.h>
 #include <linux/kernel.h>
 #include <linux/pci.h>
+
 #include <media/ipu-acpi-pdata.h>
 #include <media/ipu-acpi.h>
-
-#if IS_ENABLED(CONFIG_VIDEO_ISX031)
-#include <media/i2c/isx031.h>
-#endif
-
-#include "ipu7.h"
-#include "ipu7-isys.h"
+#include <media/ipu-get-acpi.h>
 
 static LIST_HEAD(devices);
 
@@ -62,6 +57,22 @@ static const struct ipu_acpi_devices supported_devices[] = {
  *	{ "ACPI ID", sensor_name, get_sensor_pdata, NULL, 0, TYPE, serdes_name,
  *		sensor_physical_addr, link_freq(mbps) },	// Custom HID
  */
+#if IS_ENABLED(CONFIG_VIDEO_AR0234)
+	{ "INTC10C0", AR0234_NAME, get_sensor_pdata, NULL, 0, TYPE_DIRECT, NULL,
+		AR0234_I2C_ADDRESS, 1200 },	// AR0234 HID
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_LT6911UXC)
+	{ "INTC10B1", LT6911UXC_NAME, get_sensor_pdata, NULL, 0, TYPE_DIRECT, NULL,
+		LT6911UXC_I2C_ADDRESS, 1200 },	// LT6911UXC HID
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_LT6911UXE)
+	{ "INTC10C5", LT6911UXE_NAME, get_sensor_pdata, NULL, 0, TYPE_DIRECT, NULL,
+		LT6911UXE_I2C_ADDRESS, 1200 },	// LT6911UXE HID
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_D4XX)
+	{ "INTC10CD", D457_NAME, get_sensor_pdata, NULL, 0, TYPE_SERDES, D457_NAME,
+		D4XX_I2C_ADDRESS_0, 1200 },	// D457 HID
+#endif
 
 #if IS_ENABLED(CONFIG_VIDEO_MAX9X)
 #if IS_ENABLED(CONFIG_VIDEO_ISX031)
@@ -73,7 +84,7 @@ static const struct ipu_acpi_devices supported_devices[] = {
 
 static int get_table_index(const char *acpi_name)
 {
-	unsigned int i;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(supported_devices); i++) {
 		if (!strncmp(supported_devices[i].hid_name, acpi_name,
@@ -90,9 +101,28 @@ static const struct acpi_device_id ipu_acpi_match[] = {
 /*
  *	{ "AR0234A", 0 },	// Custom HID
  */
+#if IS_ENABLED(CONFIG_VIDEO_IMX390)
+	{ "INTC10C1", 0 },	// IMX390 HID
+	{ "INTC10CM", 0 },	// D3CMC68N-106-085 IMX390 HID
+#endif
 #if IS_ENABLED(CONFIG_VIDEO_ISX031)
 	{ "INTC1031", 0 },	// ISX031 HID
 	{ "INTC031M", 0 },	// D3CMC68N-115-084 ISX031 HID
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_AR0234)
+	{ "INTC10C0", 0 },	// AR0234 HID
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_LT6911UXC)
+	{ "INTC10B1", 0 },	// LT6911UXC HID
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_LT6911UXE)
+	{ "INTC10C5", 0 },	// LT6911UXE HID
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_OV2311)
+	{ "INTC102R", 0 },	// OV2311 HID
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_D4XX)
+	{ "INTC10CD", 0 },	// D457 HID
 #endif
 	{},
 };
@@ -143,8 +173,8 @@ static int ipu_acpi_test(struct device *dev, void *priv)
 
 	if (acpi_idx < 0)
 		return 0;
-	else
-		dev_info(dev, "IPU6 ACPI: ACPI device %s\n", dev_name(dev));
+
+	dev_info(dev, "IPU6 ACPI: ACPI device %s\n", dev_name(dev));
 
 	const char *target_hid = supported_devices[acpi_idx].hid_name;
 
@@ -161,10 +191,10 @@ static int ipu_acpi_test(struct device *dev, void *priv)
 		if (!adev) {
 			dev_dbg(dev, "No ACPI device found for %s\n", target_hid);
 			return 0;
-		} else {
-			set_primary_fwnode(dev, &adev->fwnode);
-			dev_dbg(dev, "Assigned fwnode to %s\n", dev_name(dev));
 		}
+
+		set_primary_fwnode(dev, &adev->fwnode);
+		dev_dbg(dev, "Assigned fwnode to %s\n", dev_name(dev));
 	}
 
 	if (ACPI_COMPANION(dev) != adev) {
@@ -185,14 +215,52 @@ static int ipu_acpi_test(struct device *dev, void *priv)
 	return 0; /* Continue iteration */
 }
 
+/* Scan all i2c devices and pick ones which we can handle */
+
 /* Try to get all IPU related devices mentioned in BIOS and all related information
- * return a new generated existing pdata
+ * If there is existing ipu_isys_subdev_pdata, update the existing pdata
+ * If not, return a new generated existing pdata
  */
 
-int ipu_get_acpi_devices(void **spdata)
+int ipu_get_acpi_devices(void *driver_data,
+				struct device *dev,
+				void **spdata,
+				void **built_in_pdata,
+				int (*fn)
+				(struct device *, void *,
+				 void *csi2,
+				 bool reprobe))
 {
 	int rval;
-	struct ipu7_isys_subdev_pdata *ptr = NULL;
+
+	if (!built_in_pdata)
+		dev_dbg(dev, "Built-in pdata not found");
+	else {
+		dev_dbg(dev, "Built-in pdata found");
+		set_built_in_pdata(*built_in_pdata);
+	}
+
+	if ((!fn) || (!driver_data))
+		return -ENODEV;
+
+	rval = acpi_bus_for_each_dev(ipu_acpi_test, NULL);
+	if (rval < 0)
+		return rval;
+
+	if (!built_in_pdata) {
+		dev_dbg(dev, "Return ACPI generated pdata");
+		*spdata = get_acpi_subdev_pdata();
+	} else
+		dev_dbg(dev, "Return updated built-in pdata");
+
+	return 0;
+}
+EXPORT_SYMBOL(ipu_get_acpi_devices);
+
+int ipu_get_acpi_devices_new(void **spdata)
+{
+	int rval;
+	struct ipu_isys_subdev_pdata *ptr = NULL;
 
 	rval = acpi_bus_for_each_dev(ipu_acpi_test, NULL);
 	if (rval < 0)
@@ -204,10 +272,11 @@ int ipu_get_acpi_devices(void **spdata)
 
 	return 0;
 }
-EXPORT_SYMBOL(ipu_get_acpi_devices);
+EXPORT_SYMBOL(ipu_get_acpi_devices_new);
 
 static int __init ipu_acpi_init(void)
 {
+	set_built_in_pdata(NULL);
 	return 0;
 }
 
