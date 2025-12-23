@@ -27,6 +27,9 @@ intel-ipu7-isys-objs			+= ipu7-isys.o \
 					   ipu7-isys-queue.o \
 					   ipu7-isys-subdev.o
 
+ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
+intel-ipu7-isys-objs                    += ipu7-isys-tpg.o
+endif
 obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= intel-ipu7-isys.o
 
 obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= psys/

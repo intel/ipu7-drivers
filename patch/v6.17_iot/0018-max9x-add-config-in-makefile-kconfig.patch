@@ -1,21 +1,22 @@
-From d904a1e1ab6c0a1682ae50547104a8636c698656 Mon Sep 17 00:00:00 2001
-From: hepengpx <pengpengx.he@intel.com>
-Date: Wed, 27 Aug 2025 11:09:54 +0800
-Subject: [PATCH 1/2] max9x: add config in makefile & kconfig
+From f2a75c840e0905d72d6d613f81337376a5414038 Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Sat, 25 Oct 2025 16:46:35 +0800
+Subject: [PATCH] max9x: add config in makefile & kconfig
 
 Signed-off-by: hepengpx <pengpengx.he@intel.com>
+Signed-off-by: linya14x <linx.yang@intel.com>
 ---
  drivers/media/i2c/Kconfig  | 16 ++++++++++++++++
  drivers/media/i2c/Makefile |  2 ++
  2 files changed, 18 insertions(+)
 
 diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
-index 6237fe804a..c629820238 100644
+index 6dccc8e58d..f65a2f6118 100644
 --- a/drivers/media/i2c/Kconfig
 +++ b/drivers/media/i2c/Kconfig
-@@ -267,6 +267,22 @@ config VIDEO_IMX415
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called imx415.
+@@ -278,6 +278,22 @@ config VIDEO_LT6911GXD
+           To compile this driver as a module, choose M here: the
+           module will be called lt6911gxd.
 
 +config VIDEO_ISX031
 +	tristate "ISX031 sensor support"
@@ -37,7 +38,7 @@ index 6237fe804a..c629820238 100644
  	tristate
 
 diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
-index 5873d29433..9171b410e6 100644
+index 2fbdd4c181..085c0e0e15 100644
 --- a/drivers/media/i2c/Makefile
 +++ b/drivers/media/i2c/Makefile
 @@ -61,6 +61,8 @@ obj-$(CONFIG_VIDEO_IMX412) += imx412.o
@@ -50,5 +51,5 @@ index 5873d29433..9171b410e6 100644
  obj-$(CONFIG_VIDEO_LM3560) += lm3560.o
  obj-$(CONFIG_VIDEO_LM3646) += lm3646.o
 --
-2.34.1
+2.43.0
 
