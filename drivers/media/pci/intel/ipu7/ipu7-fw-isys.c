@@ -195,30 +195,9 @@ int ipu7_fw_isys_close(struct ipu7_isys *isys)
 
 struct ipu7_insys_resp *ipu7_fw_isys_get_resp(struct ipu7_isys *isys)
 {
-	/**
-	 * TODO: Revert this change after firmware ABI fixed.
-	 * This is an internal workaround.
-	 * IPU7.5 firmware changed its ABI and breaks
-	 * compatibility with IPU7 Lunar Lake.
-	 */
-	struct ipu7_insys_resp *resp =
+	return (struct ipu7_insys_resp *)
 		ipu7_syscom_get_token(isys->adev->syscom,
 				      IPU_INSYS_OUTPUT_MSG_QUEUE);
-
-	if (resp && isys->adev->isp->hw_ver == IPU_VER_7) {
-		struct ipu7_insys_legacy_resp lnl_resp;
-
-		memcpy(&lnl_resp, resp, sizeof(struct ipu7_insys_resp));
-		resp->mipi_fn = 0;
-		resp->type = lnl_resp.type;
-		resp->msg_link_streaming_mode = lnl_resp.msg_link_streaming_mode;
-		resp->stream_id = lnl_resp.stream_id;
-		resp->pin_id = lnl_resp.pin_id;
-		resp->frame_id = lnl_resp.frame_id;
-		resp->skip_frame = lnl_resp.skip_frame;
-	}
-
-	return resp;
 }
 
 void ipu7_fw_isys_put_resp(struct ipu7_isys *isys)

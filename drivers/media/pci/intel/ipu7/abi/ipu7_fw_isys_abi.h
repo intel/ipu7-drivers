@@ -356,33 +356,13 @@ struct ipu7_insys_resp {
 	struct ipu7_insys_capture_output_pin_payload pin;
 	struct ia_gofo_msg_err error_info;
 	u32 timestamp[2];
+	u8 type;
+	u8 msg_link_streaming_mode;
+	u8 stream_id;
+	u8 pin_id;
+	u8 frame_id;
+	u8 skip_frame;
 	u16 mipi_fn;
-	u8 type;
-	u8 msg_link_streaming_mode;
-	u8 stream_id;
-	u8 pin_id;
-	u8 frame_id;
-	u8 skip_frame;
-};
-
-/**
- * TODO: Revert this change after firmware ABI fixed.
- * This is an internal workaround.
- * IPU7.5 firmware changed its ABI and breaks
- * compatibility with IPU7 Lunar Lake.
- */
-struct ipu7_insys_legacy_resp {
-	u64 buf_id;
-	struct ipu7_insys_capture_output_pin_payload pin;
-	struct ia_gofo_msg_err error_info;
-	u32 timestamp[2];
-	u8 type;
-	u8 msg_link_streaming_mode;
-	u8 stream_id;
-	u8 pin_id;
-	u8 frame_id;
-	u8 skip_frame;
-	u8 pad[2];
 };
 
 struct ipu7_insys_resp_queue_token {
