@@ -1,18 +1,19 @@
-From b2ab04727acd72eee42f7f6094b8d88920f43787 Mon Sep 17 00:00:00 2001
+From 147b28d7caf9418f72006ce50383c1c2c56f616b Mon Sep 17 00:00:00 2001
 From: linya14x <linx.yang@intel.com>
 Date: Fri, 24 Oct 2025 11:46:21 +0800
 Subject: [PATCH] patch: staging add ipu7 isys reset code
 
+Change-Id: I0fadb4657fbd933e3712c7bfc5c990250e78c469
 Signed-off-by: linya14x <linx.yang@intel.com>
 ---
  drivers/staging/media/ipu7/Kconfig           |  10 +
- drivers/staging/media/ipu7/ipu7-isys-queue.c | 359 ++++++++++++++++++-
+ drivers/staging/media/ipu7/ipu7-isys-queue.c | 379 ++++++++++++++++++-
  drivers/staging/media/ipu7/ipu7-isys-queue.h |   3 +
- drivers/staging/media/ipu7/ipu7-isys-video.c | 102 ++++++
+ drivers/staging/media/ipu7/ipu7-isys-video.c | 102 +++++
  drivers/staging/media/ipu7/ipu7-isys-video.h |   8 +
  drivers/staging/media/ipu7/ipu7-isys.c       |  16 +
  drivers/staging/media/ipu7/ipu7-isys.h       |  16 +
- 7 files changed, 513 insertions(+), 1 deletion(-)
+ 7 files changed, 533 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/staging/media/ipu7/Kconfig b/drivers/staging/media/ipu7/Kconfig
 index 7d831ba750..c4eee7c3e6 100644
@@ -33,7 +34,7 @@ index 7d831ba750..c4eee7c3e6 100644
 +
 +	  If doubt, say N here.
 diff --git a/drivers/staging/media/ipu7/ipu7-isys-queue.c b/drivers/staging/media/ipu7/ipu7-isys-queue.c
-index 7046c29141..0c1596a2ba 100644
+index 7046c29141..1f5fb7d20d 100644
 --- a/drivers/staging/media/ipu7/ipu7-isys-queue.c
 +++ b/drivers/staging/media/ipu7/ipu7-isys-queue.c
 @@ -11,6 +11,9 @@
@@ -138,7 +139,7 @@ index 7046c29141..0c1596a2ba 100644
 
  	return 0;
 
-@@ -614,17 +660,272 @@ out_return_buffers:
+@@ -614,17 +660,292 @@ out_return_buffers:
  	return ret;
  }
 
@@ -231,7 +232,17 @@ index 7046c29141..0c1596a2ba 100644
 +		goto out;
 +
 +	bl = &__bl;
-+	ret = buffer_list_get(stream, bl);
++	int retry = 5;
++	while (retry--) {
++		ret = buffer_list_get(stream, bl);
++		if (ret < 0) {
++			dev_dbg(dev, "wait for incoming buffer, retry %d\n", retry);
++			usleep_range(100000, 110000);
++			continue;
++		}
++		break;
++	}
++
 +	/*
 +	 * In reset start streaming and no buffer available,
 +	 * it is considered that gstreamer has been closed,
@@ -288,6 +299,7 @@ index 7046c29141..0c1596a2ba 100644
 +	struct ipu7_isys_video *av = NULL;
 +	struct ipu7_isys_stream *stream = NULL;
 +	struct device *dev = &adev->auxdev.dev;
++	int ret = 0;
 +	int i, j;
 +	int has_streaming = 0;
 +	const struct ipu7_isys_internal_csi2_pdata *csi2_pdata =
@@ -345,8 +357,12 @@ index 7046c29141..0c1596a2ba 100644
 +				continue;
 +
 +			av->reset = false;
-+			reset_start_streaming(av);
++			ret = reset_start_streaming(av);
++			if (ret)
++				break;
 +		}
++		if (ret)
++			break;
 +	}
 +
 +end_of_reset:
@@ -364,6 +380,7 @@ index 7046c29141..0c1596a2ba 100644
  	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
  	struct ipu7_isys_stream *stream = av->stream;
 +	int ret = 0;
++	int times = 5;
 +
 +	struct device *dev = &av->isys->adev->auxdev.dev;
 +	bool need_reset;
@@ -373,7 +390,7 @@ index 7046c29141..0c1596a2ba 100644
 +	mutex_lock(&av->isys->reset_mutex);
 +	while (av->isys->state) {
 +		mutex_unlock(&av->isys->reset_mutex);
-+		dev_dbg(dev, "stop: %s: wait for rest or stop, isys->state = %d\n",
++		dev_dbg(dev, "stop: %s: wait for reset or stop, isys->state = %d\n",
 +			av->vdev.name, av->isys->state);
 +		usleep_range(10000, 11000);
 +		mutex_lock(&av->isys->reset_mutex);
@@ -387,6 +404,10 @@ index 7046c29141..0c1596a2ba 100644
 +
 +	av->isys->state |= RESET_STATE_IN_STOP_STREAMING;
 +	mutex_unlock(&av->isys->reset_mutex);
++
++	while (!list_empty(&aq->active) && times--) {
++		usleep_range(30000, 31000);
++	}
 +
 +	stream = av->stream;
 +	if (!stream) {
@@ -412,7 +433,7 @@ index 7046c29141..0c1596a2ba 100644
 
  	stream->nr_streaming--;
  	list_del(&aq->node);
-@@ -637,7 +938,58 @@ static void stop_streaming(struct vb2_queue *q)
+@@ -637,7 +958,58 @@ static void stop_streaming(struct vb2_queue *q)
  	return_buffers(aq, VB2_BUF_STATE_ERROR);
 
  	ipu7_isys_fw_close(av->isys);
@@ -471,7 +492,7 @@ index 7046c29141..0c1596a2ba 100644
 
  static unsigned int
  get_sof_sequence_by_timestamp(struct ipu7_isys_stream *stream, u64 time)
-@@ -719,6 +1071,11 @@ static void ipu7_isys_queue_buf_done(struct ipu7_isys_buffer *ib)
+@@ -719,6 +1091,11 @@ static void ipu7_isys_queue_buf_done(struct ipu7_isys_buffer *ib)
  		 * to the userspace when it is de-queued
  		 */
  		atomic_set(&ib->str2mmio_flag, 0);
@@ -799,5 +820,5 @@ index ef1ab1b42f..17d4d56301 100644
 
  struct isys_fw_msgs {
 --
-2.43.0
+2.34.1
 

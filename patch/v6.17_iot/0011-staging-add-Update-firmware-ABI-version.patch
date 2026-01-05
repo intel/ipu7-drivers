@@ -1,20 +1,16 @@
-From 0719c0526372c9d710f48b21c18610d03253b5f5 Mon Sep 17 00:00:00 2001
+From de868e339dcfcbd9e7f675ae12794c24f59859db Mon Sep 17 00:00:00 2001
 From: linya14x <linx.yang@intel.com>
 Date: Fri, 14 Nov 2025 18:41:08 +0800
 Subject: [PATCH] media: ipu: Update firmware ABI version to
- 1.2.1.20251028_225604
+ 1.2.1.20251215_224531
 
-media: ipu7: Workaround for FW breaking ABI compatibility
-commit-id: ab9874f2747fd6af6cee621b05341f18d6212437
-commit-id: c3b8dc8ad76895b6a9f17e705442ca19de05e76c
 Signed-off-by: Hao Yao <hao.yao@intel.com>
 Signed-off-by: linya14x <linx.yang@intel.com>
 ---
- .../staging/media/ipu7/abi/ipu7_fw_boot_abi.h |  1 +
- .../staging/media/ipu7/abi/ipu7_fw_isys_abi.h | 29 +++++++++++++++++--
- .../staging/media/ipu7/abi/ipu7_fw_msg_abi.h  |  2 +-
- drivers/staging/media/ipu7/ipu7-fw-isys.c     | 23 ++++++++++++++-
- 4 files changed, 50 insertions(+), 5 deletions(-)
+ drivers/staging/media/ipu7/abi/ipu7_fw_boot_abi.h |  1 +
+ drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h | 11 +++++++----
+ drivers/staging/media/ipu7/abi/ipu7_fw_msg_abi.h  |  2 +-
+ 3 files changed, 9 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/staging/media/ipu7/abi/ipu7_fw_boot_abi.h b/drivers/staging/media/ipu7/abi/ipu7_fw_boot_abi.h
 index a1519c4fe6..4ce304f54e 100644
@@ -29,7 +25,7 @@ index a1519c4fe6..4ce304f54e 100644
  	IA_GOFO_FW_BOOT_STATE_SHUTDOWN_START = 0x57a7e200U,
  	IA_GOFO_FW_BOOT_STATE_INACTIVE = 0x57a7e300U,
 diff --git a/drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h b/drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h
-index 45db85eb13..171b69c8c8 100644
+index c42d0b7a26..7f622bfe9a 100644
 --- a/drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h
 +++ b/drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h
 @@ -47,7 +47,6 @@ enum ipu7_insys_resp_type {
@@ -64,33 +60,15 @@ index 45db85eb13..171b69c8c8 100644
  #pragma pack(push, 1)
  struct ipu7_insys_resolution {
  	u32 width;
-@@ -349,6 +352,26 @@ struct ipu7_insys_buffset {
+@@ -312,7 +315,7 @@ struct ipu7_insys_resp {
+ 	u8 pin_id;
+ 	u8 frame_id;
+ 	u8 skip_frame;
+-	u8 pad[2];
++	u16 mipi_fn;
  };
 
- struct ipu7_insys_resp {
-+	u64 buf_id;
-+	struct ipu7_insys_capture_output_pin_payload pin;
-+	struct ia_gofo_msg_err error_info;
-+	u32 timestamp[2];
-+	u16 mipi_fn;
-+	u8 type;
-+	u8 msg_link_streaming_mode;
-+	u8 stream_id;
-+	u8 pin_id;
-+	u8 frame_id;
-+	u8 skip_frame;
-+};
-+
-+/**
-+ * TODO: Revert this change after firmware ABI fixed.
-+ * This is an internal workaround.
-+ * IPU7.5 firmware changed its ABI and breaks
-+ * compatibility with IPU7 Lunar Lake.
-+ */
-+struct ipu7_insys_legacy_resp {
- 	u64 buf_id;
- 	struct ipu7_insys_capture_output_pin_payload pin;
- 	struct ia_gofo_msg_err error_info;
+ struct ipu7_insys_resp_queue_token {
 diff --git a/drivers/staging/media/ipu7/abi/ipu7_fw_msg_abi.h b/drivers/staging/media/ipu7/abi/ipu7_fw_msg_abi.h
 index 8a78dd0936..1319f0eb63 100644
 --- a/drivers/staging/media/ipu7/abi/ipu7_fw_msg_abi.h
@@ -104,42 +82,6 @@ index 8a78dd0936..1319f0eb63 100644
  	ipu7_msg_teb_t payload_reuse_bm;
  	ia_gofo_addr_t term_buffers[IPU_MSG_MAX_NODE_TERMS];
  };
-diff --git a/drivers/staging/media/ipu7/ipu7-fw-isys.c b/drivers/staging/media/ipu7/ipu7-fw-isys.c
-index 2958e39a35..26704c6fad 100644
---- a/drivers/staging/media/ipu7/ipu7-fw-isys.c
-+++ b/drivers/staging/media/ipu7/ipu7-fw-isys.c
-@@ -195,9 +195,30 @@ int ipu7_fw_isys_close(struct ipu7_isys *isys)
-
- struct ipu7_insys_resp *ipu7_fw_isys_get_resp(struct ipu7_isys *isys)
- {
--	return (struct ipu7_insys_resp *)
-+	/**
-+	 * TODO: Revert this change after firmware ABI fixed.
-+	 * This is an internal workaround.
-+	 * IPU7.5 firmware changed its ABI and breaks
-+	 * compatibility with IPU7 Lunar Lake.
-+	 */
-+	struct ipu7_insys_resp *resp =
- 		ipu7_syscom_get_token(isys->adev->syscom,
- 				      IPU_INSYS_OUTPUT_MSG_QUEUE);
-+
-+	if (resp && isys->adev->isp->hw_ver == IPU_VER_7) {
-+		struct ipu7_insys_legacy_resp lnl_resp;
-+
-+		memcpy(&lnl_resp, resp, sizeof(struct ipu7_insys_resp));
-+		resp->mipi_fn = 0;
-+		resp->type = lnl_resp.type;
-+		resp->msg_link_streaming_mode = lnl_resp.msg_link_streaming_mode;
-+		resp->stream_id = lnl_resp.stream_id;
-+		resp->pin_id = lnl_resp.pin_id;
-+		resp->frame_id = lnl_resp.frame_id;
-+		resp->skip_frame = lnl_resp.skip_frame;
-+	}
-+
-+	return resp;
- }
-
- void ipu7_fw_isys_put_resp(struct ipu7_isys *isys)
 --
 2.43.0
 
