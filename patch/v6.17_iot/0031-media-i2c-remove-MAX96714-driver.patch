@@ -1,0 +1,70 @@
+From a8d9f7bcb95ef9d935f330fdac1a9bd49ffec2e1 Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Fri, 14 Nov 2025 16:52:01 +0200
+Subject: [PATCH 31/51] media: i2c: remove MAX96714 driver
+
+The previous MAX96714 driver has been removed and its functionality has
+been moved to the MAX9296A driver which makes use of the Maxim GMSL2/3
+serializer framework.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+---
+ MAINTAINERS                |  1 -
+ drivers/media/i2c/Kconfig  | 16 ----------------
+ drivers/media/i2c/Makefile |  1 -
+ 3 files changed, 18 deletions(-)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 1af272f3fdf00..bae68e9976e37 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -14971,7 +14971,6 @@ M:	Julien Massot <julien.massot@collabora.com>
+ L:	linux-media@vger.kernel.org
+ S:	Maintained
+ F:	Documentation/devicetree/bindings/media/i2c/maxim,max96714.yaml
+-F:	drivers/media/i2c/max96714.c
+ 
+ MAX96717 GMSL2 SERIALIZER DRIVER
+ M:	Julien Massot <julien.massot@collabora.com>
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 8ea45ac3af665..c550da0709453 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -1680,22 +1680,6 @@ config VIDEO_DS90UB960
+ 	  Device driver for the Texas Instruments DS90UB960
+ 	  FPD-Link III Deserializer and DS90UB9702 FPD-Link IV Deserializer.
+ 
+-config VIDEO_MAX96714
+-	tristate "Maxim MAX96714 GMSL2 deserializer"
+-	depends on OF && I2C && VIDEO_DEV
+-	select I2C_MUX
+-	select MEDIA_CONTROLLER
+-	select GPIOLIB
+-	select V4L2_CCI_I2C
+-	select V4L2_FWNODE
+-	select VIDEO_V4L2_SUBDEV_API
+-	help
+-	  Device driver for the Maxim MAX96714 GMSL2 Deserializer.
+-	  MAX96714 deserializers convert a GMSL2 input to MIPI CSI-2
+-	  output.
+-
+-	  To compile this driver as a module, choose M here: the
+-	  module will be called max96714.
+ 
+ 
+ source "drivers/media/i2c/maxim-serdes/Kconfig"
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index 962908a763bea..c676fc4b87a31 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -70,7 +70,6 @@ obj-$(CONFIG_VIDEO_LT6911UXE) += lt6911uxe.o
+ obj-$(CONFIG_VIDEO_M52790) += m52790.o
+ obj-$(CONFIG_VIDEO_MAX9271_LIB) += max9271.o
+ obj-$(CONFIG_VIDEO_MAX9286) += max9286.o
+-obj-$(CONFIG_VIDEO_MAX96714) += max96714.o
+ obj-$(CONFIG_VIDEO_MAXIM_SERDES) += maxim-serdes/
+ obj-$(CONFIG_VIDEO_ML86V7667) += ml86v7667.o
+ obj-$(CONFIG_VIDEO_MSP3400) += msp3400.o
+-- 
+2.51.1
+

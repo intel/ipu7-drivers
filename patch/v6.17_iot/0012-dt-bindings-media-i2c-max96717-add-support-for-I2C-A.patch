@@ -1,0 +1,79 @@
+From 282d93a4c911137bffb9e1101803826d467fc083 Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Fri, 14 Nov 2025 16:51:42 +0200
+Subject: [PATCH 12/51] dt-bindings: media: i2c: max96717: add support for I2C
+ ATR
+
+MAX96717 is capable of address translation for the connected I2C slaves.
+
+Add support for I2C ATR while keeping I2C gate for compatibility to
+support this usecase.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+Reviewed-by: Rob Herring (Arm) <robh@kernel.org>
+Reviewed-by: Julien Massot <julien.massot@collabora.com>
+---
+ .../bindings/media/i2c/maxim,max96717.yaml    | 39 +++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+index d1e8ba6e368ec..976f6dd2c164c 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+@@ -91,6 +91,30 @@ properties:
+       incoming GMSL2 link. Therefore, it supports an i2c-gate
+       subnode to configure a sensor.
+ 
++  i2c-alias-pool:
++    maxItems: 2
++
++  i2c-atr:
++    type: object
++    additionalProperties: false
++
++    properties:
++      '#address-cells':
++        const: 1
++
++      '#size-cells':
++        const: 0
++
++    patternProperties:
++      '^i2c@[01]$':
++        $ref: /schemas/i2c/i2c-controller.yaml#
++        unevaluatedProperties: false
++        properties:
++          reg:
++            items:
++              minimum: 0
++              maximum: 1
++
+ required:
+   - compatible
+   - reg
+@@ -98,6 +122,21 @@ required:
+ 
+ additionalProperties: false
+ 
++allOf:
++  - $ref: /schemas/i2c/i2c-atr.yaml#
++
++  - anyOf:
++      - oneOf:
++          - required: [i2c-atr]
++          - required: [i2c-gate]
++
++      - not:
++          required: [i2c-atr, i2c-gate]
++
++dependentRequired:
++  i2c-atr: [i2c-alias-pool]
++  i2c-alias-pool: [i2c-atr]
++
+ examples:
+   - |
+     #include <dt-bindings/gpio/gpio.h>
+-- 
+2.51.1
+

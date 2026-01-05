@@ -1,0 +1,70 @@
+From 02fa855b20d98919e474bc649455e4f5f3c7e34c Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Fri, 14 Nov 2025 16:52:00 +0200
+Subject: [PATCH 30/51] media: i2c: remove MAX96717 driver
+
+The previous MAX96717 driver has been removed and its functionality has
+been moved to a MAX96717 driver which makes use of the Maxim GMSL2/3
+serializer framework.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+---
+ MAINTAINERS                |  1 -
+ drivers/media/i2c/Kconfig  | 16 ----------------
+ drivers/media/i2c/Makefile |  1 -
+ 3 files changed, 18 deletions(-)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 1397ae26ec474..1af272f3fdf00 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -14978,7 +14978,6 @@ M:	Julien Massot <julien.massot@collabora.com>
+ L:	linux-media@vger.kernel.org
+ S:	Maintained
+ F:	Documentation/devicetree/bindings/media/i2c/maxim,max96717.yaml
+-F:	drivers/media/i2c/max96717.c
+ 
+ MAX9860 MONO AUDIO VOICE CODEC DRIVER
+ M:	Peter Rosin <peda@axentia.se>
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 52d22b93dde46..8ea45ac3af665 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -1697,22 +1697,6 @@ config VIDEO_MAX96714
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called max96714.
+ 
+-config VIDEO_MAX96717
+-	tristate "Maxim MAX96717 GMSL2 Serializer support"
+-	depends on I2C && VIDEO_DEV && COMMON_CLK
+-	select I2C_MUX
+-	select MEDIA_CONTROLLER
+-	select GPIOLIB
+-	select V4L2_CCI_I2C
+-	select V4L2_FWNODE
+-	select VIDEO_V4L2_SUBDEV_API
+-	help
+-	  Device driver for the Maxim MAX96717 GMSL2 Serializer.
+-	  MAX96717 serializers convert video on a MIPI CSI-2
+-	  input to a GMSL2 output.
+-
+-	  To compile this driver as a module, choose M here: the
+-	  module will be called max96717.
+ 
+ source "drivers/media/i2c/maxim-serdes/Kconfig"
+ 
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index 22813cf584eff..962908a763bea 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -71,7 +71,6 @@ obj-$(CONFIG_VIDEO_M52790) += m52790.o
+ obj-$(CONFIG_VIDEO_MAX9271_LIB) += max9271.o
+ obj-$(CONFIG_VIDEO_MAX9286) += max9286.o
+ obj-$(CONFIG_VIDEO_MAX96714) += max96714.o
+-obj-$(CONFIG_VIDEO_MAX96717) += max96717.o
+ obj-$(CONFIG_VIDEO_MAXIM_SERDES) += maxim-serdes/
+ obj-$(CONFIG_VIDEO_ML86V7667) += ml86v7667.o
+ obj-$(CONFIG_VIDEO_MSP3400) += msp3400.o
+-- 
+2.51.1
+
