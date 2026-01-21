@@ -1076,7 +1076,7 @@ static int isys_probe(struct auxiliary_device *auxdev,
 #endif
 
 	cpu_latency_qos_add_request(&isys->pm_qos, PM_QOS_DEFAULT_VALUE);
-	ret = alloc_fw_msg_bufs(isys, 40);
+	ret = alloc_fw_msg_bufs(isys, 20);
 	if (ret < 0)
 		goto out_cleanup_isys;
 

@@ -2750,7 +2750,6 @@ static void ipu7_pci_remove(struct pci_dev *pdev)
 	ipu_buttress_exit(isp);
 
 	release_firmware(isp->cpd_fw);
-
 }
 
 static void ipu7_pci_reset_prepare(struct pci_dev *pdev)
