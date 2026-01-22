@@ -482,14 +482,13 @@ static int ipu7_isys_link_fmt_validate(struct ipu7_isys_queue *aq)
 		media_pad_remote_pad_first(av->vdev.entity.pads);
 	struct v4l2_mbus_framefmt format;
 	struct v4l2_subdev *sd;
-	u32 r_stream, code;
+	u32 r_stream = 0, code;
 	int ret;
 
 	if (!remote_pad)
 		return -ENOTCONN;
 
 	sd = media_entity_to_v4l2_subdev(remote_pad->entity);
-	r_stream = ipu7_isys_get_src_stream_by_src_pad(sd, remote_pad->index);
 
 	ret = ipu7_isys_get_stream_pad_fmt(sd, remote_pad->index, r_stream,
 					   &format);
@@ -761,17 +760,7 @@ static int reset_start_streaming(struct ipu7_isys_video *av)
 		goto out;
 
 	bl = &__bl;
-	int retry = 5;
-	while (retry--) {
-		ret = buffer_list_get(stream, bl);
-		if (ret < 0) {
-			dev_dbg(dev, "wait for incoming buffer, retry %d\n", retry);
-			usleep_range(100000, 110000);
-			continue;
-		}
-		break;
-	}
-
+	ret = buffer_list_get(stream, bl);
 	/*
 	 * In reset start streaming and no buffer available,
 	 * it is considered that gstreamer has been closed,

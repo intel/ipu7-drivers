@@ -343,14 +343,22 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
 	u32 disable_irqs = 0;
 	u32 irq_status;
 	unsigned int i;
+	int active;
 
-	pm_runtime_get_noresume(dev);
+	active = pm_runtime_get_if_active(dev);
+	if (active <= 0)
+		return IRQ_NONE;
 
 	pb_irq = readl(isp->pb_base + INTERRUPT_STATUS);
 	writel(pb_irq, isp->pb_base + INTERRUPT_STATUS);
 
 	/* check btrs ATS, CFI and IMR errors, BIT(0) is unused for IPU */
 	pb_local_irq = readl(isp->pb_base + BTRS_LOCAL_INTERRUPT_MASK);
+	if (WARN_ON_ONCE(pb_local_irq == 0xffffffff)) {
+		pm_runtime_put_noidle(dev);
+		return IRQ_NONE;
+	}
+
 	if (pb_local_irq & ~BIT(0)) {
 		dev_warn(dev, "PB interrupt status 0x%x local 0x%x\n", pb_irq,
 			 pb_local_irq);
@@ -366,7 +374,7 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
 	}
 
 	irq_status = readl(isp->base + BUTTRESS_REG_IRQ_STATUS);
-	if (!irq_status) {
+	if (!irq_status || WARN_ON_ONCE(irq_status == 0xffffffff)) {
 		pm_runtime_put_noidle(dev);
 		return IRQ_NONE;
 	}
