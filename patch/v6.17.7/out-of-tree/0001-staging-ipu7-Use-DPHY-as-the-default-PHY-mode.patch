@@ -1,0 +1,31 @@
+From 63f2c63dc869a4e6a2e7e58040739b31c7894b6b Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Fri, 24 Oct 2025 12:44:25 +0800
+Subject: [PATCH 1/6] staging: ipu7: Use DPHY as the default PHY mode
+
+Signed-off-by: Bingbu Cao <bingbu.cao@intel.com>
+---
+ drivers/staging/media/ipu7/ipu7-isys.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7-isys.c b/drivers/staging/media/ipu7/ipu7-isys.c
+index cb2f49f3e0fa..dd481f9d848d 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -81,10 +81,10 @@ isys_complete_ext_device_registration(struct ipu7_isys *isys,
+ 	}
+
+ 	isys->csi2[csi2->port].nlanes = csi2->nlanes;
+-	if (csi2->bus_type == V4L2_MBUS_CSI2_DPHY)
+-		isys->csi2[csi2->port].phy_mode = PHY_MODE_DPHY;
+-	else
++	if (csi2->bus_type == V4L2_MBUS_CSI2_CPHY)
+ 		isys->csi2[csi2->port].phy_mode = PHY_MODE_CPHY;
++	else
++		isys->csi2[csi2->port].phy_mode = PHY_MODE_DPHY;
+
+ 	return 0;
+
+--
+2.43.0
+
