@@ -864,19 +864,17 @@ static u32 get_remote_pad_stream(struct media_pad *r_pad)
 {
 	struct v4l2_subdev_state *state;
 	struct v4l2_subdev *sd;
+	struct v4l2_subdev_route *route;
 	u32 stream_id = 0;
-	unsigned int i;
 
 	sd = media_entity_to_v4l2_subdev(r_pad->entity);
 	state = v4l2_subdev_lock_and_get_active_state(sd);
 	if (!state)
 		return 0;
 
-	for (i = 0; i < state->stream_configs.num_configs; i++) {
-		struct v4l2_subdev_stream_config *cfg =
-			&state->stream_configs.configs[i];
-		if (cfg->pad == r_pad->index) {
-			stream_id = cfg->stream;
+	for_each_active_route(&state->routing, route) {
+		if (route->source_pad == r_pad->index) {
+			stream_id = route->source_stream;
 			break;
 		}
 	}
