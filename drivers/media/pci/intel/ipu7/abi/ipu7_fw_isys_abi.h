@@ -356,13 +356,18 @@ struct ipu7_insys_resp {
 	struct ipu7_insys_capture_output_pin_payload pin;
 	struct ia_gofo_msg_err error_info;
 	u32 timestamp[2];
+#ifdef IPU8_INSYS_NEW_ABI
+	u16 mipi_fn;
+#endif
 	u8 type;
 	u8 msg_link_streaming_mode;
 	u8 stream_id;
 	u8 pin_id;
 	u8 frame_id;
 	u8 skip_frame;
+#ifndef IPU8_INSYS_NEW_ABI
 	u16 mipi_fn;
+#endif
 };
 
 struct ipu7_insys_resp_queue_token {
@@ -419,6 +424,14 @@ enum insys_msg_err_stream {
 	INSYS_MSG_ERR_STREAM_INSUFFICIENT_RESOURCES_OUTPUT = 36,
 	INSYS_MSG_ERR_STREAM_WIDTH_OUTPUT_SIZE = 37,
 	INSYS_MSG_ERR_STREAM_CLOSED = 38,
+#ifdef IPU8_INSYS_NEW_ABI
+	INSYS_MSG_ERR_STREAM_BINNING_FACTOR_NOT_SUPPORTED = 39,
+	INSYS_MSG_ERR_STREAM_CFA_DIM_NOT_SUPPORTED = 40,
+	INSYS_MSG_ERR_STREAM_INVALID_UPIPE_ENABLE = 41,
+	INSYS_MSG_ERR_STREAM_INVALID_UPIPE_UOB_SINGLE = 42,
+	INSYS_MSG_ERR_STREAM_INVALID_UPIPE_UOB_SHARED = 43,
+	INSYS_MSG_ERR_STREAM_INVALID_UPIPE_OPAQUE_PIN_CFG = 44,
+#endif
 	INSYS_MSG_ERR_STREAM_N
 };
 

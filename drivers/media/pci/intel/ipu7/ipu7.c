@@ -57,6 +57,7 @@ static const unsigned int ipu7_csi_offsets[] = {
 static struct ipu_isys_internal_pdata ipu7p5_isys_ipdata = {
 	.csi2 = {
 		.gpreg = IS_IO_CSI2_GPREGS_BASE,
+		.gpreg_stride = 0x1000,
 	},
 	.hw_variant = {
 		.offset = IPU_UNIFIED_OFFSET,
@@ -797,6 +798,7 @@ static struct ipu_psys_internal_pdata ipu7p5_psys_ipdata = {
 static struct ipu_isys_internal_pdata ipu7_isys_ipdata = {
 	.csi2 = {
 		.gpreg = IS_IO_CSI2_GPREGS_BASE,
+		.gpreg_stride = 0x1000,
 	},
 	.hw_variant = {
 		.offset = IPU_UNIFIED_OFFSET,
@@ -1314,6 +1316,7 @@ static struct ipu_psys_internal_pdata ipu7_psys_ipdata = {
 static struct ipu_isys_internal_pdata ipu8_isys_ipdata = {
 	.csi2 = {
 		.gpreg = IPU8_IS_IO_CSI2_GPREGS_BASE,
+		.gpreg_stride = 0x2000,
 	},
 	.hw_variant = {
 		.offset = IPU_UNIFIED_OFFSET,
@@ -2713,7 +2716,7 @@ out_ipu_bus_del_devices:
 	if (!IS_ERR_OR_NULL(isp->isys) && !IS_ERR_OR_NULL(isp->isys->mmu))
 		ipu7_mmu_cleanup(isp->isys->mmu);
 	if (!IS_ERR_OR_NULL(isp->psys))
-		pm_runtime_put(&isp->psys->auxdev.dev);
+		pm_runtime_put_sync(&isp->psys->auxdev.dev);
 	ipu7_bus_del_devices(pdev);
 	release_firmware(isp->cpd_fw);
 buttress_exit:
@@ -2750,6 +2753,7 @@ static void ipu7_pci_remove(struct pci_dev *pdev)
 	ipu_buttress_exit(isp);
 
 	release_firmware(isp->cpd_fw);
+
 }
 
 static void ipu7_pci_reset_prepare(struct pci_dev *pdev)

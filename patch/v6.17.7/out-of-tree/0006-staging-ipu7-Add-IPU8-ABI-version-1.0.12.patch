@@ -1,0 +1,274 @@
+From d7535c4ef47d2fab8cd4019c0b3d1a47b20fc962 Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Fri, 24 Oct 2025 12:09:58 +0800
+Subject: [PATCH 6/6] staging: ipu7: Add IPU8 ABI version 1.0.12
+
+IPU8 firmware ABI should be enabled by
+-DIPU8_INSYS_NEW_ABI
+
+Signed-off-by: Hao Yao <hao.yao@intel.com>
+---
+ .../staging/media/ipu7/abi/ipu7_fw_boot_abi.h | 15 +++--
+ .../staging/media/ipu7/abi/ipu7_fw_isys_abi.h | 60 +++++++++++++++++++
+ drivers/staging/media/ipu7/ipu7-fw-isys.c     | 29 +++++++++
+ drivers/staging/media/ipu7/ipu7-isys-queue.c  |  6 ++
+ drivers/staging/media/ipu7/ipu7-isys-video.c  | 17 ++++++
+ 5 files changed, 122 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/abi/ipu7_fw_boot_abi.h b/drivers/staging/media/ipu7/abi/ipu7_fw_boot_abi.h
+index 4ce304f54e4b..539192cdd0e7 100644
+--- a/drivers/staging/media/ipu7/abi/ipu7_fw_boot_abi.h
++++ b/drivers/staging/media/ipu7/abi/ipu7_fw_boot_abi.h
+@@ -113,14 +113,19 @@ struct ia_gofo_secondary_boot_config {
+ #define IA_GOFO_DOUBLE_EXCEPTION_ERR		0xdead0806U
+ #define IA_GOFO_BIST_DMEM_FAULT_DETECTION_ERR	0xdead1000U
+ #define IA_GOFO_BIST_DATA_INTEGRITY_FAILURE	0xdead1010U
++#define IA_GOFO_BOOT_STATE_UNINIT		0x57a7e000U
++#define IA_GOFO_BOOT_STATE_STARTING_0		0x57a7d000U
++#define IA_GOFO_BOOT_STATE_CACHE_INIT_DONE	0x57a7d010U
++#define IA_GOFO_BOOT_STATE_MEM_INIT_DONE	0x57a7d020U
++#define IA_GOFO_BOOT_STATE_STACK_INIT_DONE	0x57a7d030U
+
+ enum ia_gofo_boot_state {
+ 	IA_GOFO_FW_BOOT_STATE_SECONDARY_BOOT_CONFIG_READY = 0x57a7b000U,
+-	IA_GOFO_FW_BOOT_STATE_UNINIT = 0x57a7e000U,
+-	IA_GOFO_FW_BOOT_STATE_STARTING_0 = 0x57a7d000U,
+-	IA_GOFO_FW_BOOT_STATE_CACHE_INIT_DONE = 0x57a7d010U,
+-	IA_GOFO_FW_BOOT_STATE_MEM_INIT_DONE = 0x57a7d020U,
+-	IA_GOFO_FW_BOOT_STATE_STACK_INIT_DONE = 0x57a7d030U,
++	IA_GOFO_FW_BOOT_STATE_UNINIT = IA_GOFO_BOOT_STATE_UNINIT,
++	IA_GOFO_FW_BOOT_STATE_STARTING_0 = IA_GOFO_BOOT_STATE_STARTING_0,
++	IA_GOFO_FW_BOOT_STATE_CACHE_INIT_DONE = IA_GOFO_BOOT_STATE_CACHE_INIT_DONE,
++	IA_GOFO_FW_BOOT_STATE_MEM_INIT_DONE = IA_GOFO_BOOT_STATE_MEM_INIT_DONE,
++	IA_GOFO_FW_BOOT_STATE_STACK_INIT_DONE = IA_GOFO_BOOT_STATE_STACK_INIT_DONE,
+ 	IA_GOFO_FW_BOOT_STATE_EARLY_BOOT_DONE = 0x57a7d100U,
+ 	IA_GOFO_FW_BOOT_STATE_BOOT_CONFIG_START = 0x57a7d200U,
+ 	IA_GOFO_FW_BOOT_STATE_QUEUE_INIT_DONE = 0x57a7d300U,
+diff --git a/drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h b/drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h
+index 7f622bfe9af6..f32674f081d2 100644
+--- a/drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h
++++ b/drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h
+@@ -254,6 +254,10 @@ struct ipu7_insys_output_link {
+ struct ipu7_insys_output_cropping {
+ 	u16 line_top;
+ 	u16 line_bottom;
++#ifdef IPU8_INSYS_NEW_ABI
++	u16 column_left;
++	u16 column_right;
++#endif
+ };
+
+ struct ipu7_insys_output_dpcm {
+@@ -263,16 +267,55 @@ struct ipu7_insys_output_dpcm {
+ 	u8 pad;
+ };
+
++#ifdef IPU8_INSYS_NEW_ABI
++enum ipu_insys_cfa_dim {
++	IPU_INSYS_CFA_DIM_2x2 = 0,
++	IPU_INSYS_CFA_DIM_4x4 = 1,
++	N_IPU_INSYS_CFA_DIM
++};
++
++#define IPU_INSYS_MAX_BINNING_FACTOR		(4U)
++#define IPU_INSYS_UPIPE_MAX_OUTPUTS		(2U)
++#define IPU_INSYS_UPIPE_MAX_UOB_FIFO_ALLOC	(4U)
++#define IPU_INSYS_UPIPE_STREAM_CFG_BUF_SIZE	(32U)
++#define IPU_INSYS_UPIPE_FRAME_CFG_BUF_SIZE	(36U)
++
++struct ipu7_insys_upipe_output_pin {
++	ia_gofo_addr_t opaque_pin_cfg;
++	u16 plane_offset_1;
++	u16 plane_offset_2;
++	u8 single_uob_fifo;
++	u8 shared_uob_fifo;
++	u8 pad[2];
++};
++
++struct ipu7_insys_capture_output_pin_cfg {
++	struct ipu7_insys_capture_output_pin_payload pin_payload;
++	ia_gofo_addr_t upipe_capture_cfg;
++};
++
++#endif
+ struct ipu7_insys_output_pin {
+ 	struct ipu7_insys_output_link link;
+ 	struct ipu7_insys_output_cropping crop;
+ 	struct ipu7_insys_output_dpcm dpcm;
++#ifdef IPU8_INSYS_NEW_ABI
++	struct ipu7_insys_upipe_output_pin upipe_pin_cfg;
++#endif
+ 	u32 stride;
+ 	u16 ft;
++#ifdef IPU8_INSYS_NEW_ABI
++	u8 upipe_enable;
++#endif
+ 	u8 send_irq;
+ 	u8 input_pin_id;
+ 	u8 early_ack_en;
++#ifdef IPU8_INSYS_NEW_ABI
++	u8 cfa_dim;
++	u8 binning_factor;
++#else
+ 	u8 pad[3];
++#endif
+ };
+
+ struct ipu7_insys_input_pin {
+@@ -297,7 +340,11 @@ struct ipu7_insys_stream_cfg {
+ };
+
+ struct ipu7_insys_buffset {
++#ifdef IPU8_INSYS_NEW_ABI
++	struct ipu7_insys_capture_output_pin_cfg output_pins[4];
++#else
+ 	struct ipu7_insys_capture_output_pin_payload output_pins[4];
++#endif
+ 	u8 capture_msg_map;
+ 	u8 frame_id;
+ 	u8 skip_frame;
+@@ -309,13 +356,18 @@ struct ipu7_insys_resp {
+ 	struct ipu7_insys_capture_output_pin_payload pin;
+ 	struct ia_gofo_msg_err error_info;
+ 	u32 timestamp[2];
++#ifdef IPU8_INSYS_NEW_ABI
++	u16 mipi_fn;
++#endif
+ 	u8 type;
+ 	u8 msg_link_streaming_mode;
+ 	u8 stream_id;
+ 	u8 pin_id;
+ 	u8 frame_id;
+ 	u8 skip_frame;
++#ifndef IPU8_INSYS_NEW_ABI
+ 	u16 mipi_fn;
++#endif
+ };
+
+ struct ipu7_insys_resp_queue_token {
+@@ -372,6 +424,14 @@ enum insys_msg_err_stream {
+ 	INSYS_MSG_ERR_STREAM_INSUFFICIENT_RESOURCES_OUTPUT = 36,
+ 	INSYS_MSG_ERR_STREAM_WIDTH_OUTPUT_SIZE = 37,
+ 	INSYS_MSG_ERR_STREAM_CLOSED = 38,
++#ifdef IPU8_INSYS_NEW_ABI
++	INSYS_MSG_ERR_STREAM_BINNING_FACTOR_NOT_SUPPORTED = 39,
++	INSYS_MSG_ERR_STREAM_CFA_DIM_NOT_SUPPORTED = 40,
++	INSYS_MSG_ERR_STREAM_INVALID_UPIPE_ENABLE = 41,
++	INSYS_MSG_ERR_STREAM_INVALID_UPIPE_UOB_SINGLE = 42,
++	INSYS_MSG_ERR_STREAM_INVALID_UPIPE_UOB_SHARED = 43,
++	INSYS_MSG_ERR_STREAM_INVALID_UPIPE_OPAQUE_PIN_CFG = 44,
++#endif
+ 	INSYS_MSG_ERR_STREAM_N
+ };
+
+diff --git a/drivers/staging/media/ipu7/ipu7-fw-isys.c b/drivers/staging/media/ipu7/ipu7-fw-isys.c
+index e4b9c364572b..c98326bd9fee 100644
+--- a/drivers/staging/media/ipu7/ipu7-fw-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-fw-isys.c
+@@ -268,6 +268,12 @@ void ipu7_fw_isys_dump_stream_cfg(struct device *dev,
+ 			cfg->output_pins[i].crop.line_top);
+ 		dev_dbg(dev, "\t.crop.line_bottom = %d\n",
+ 			cfg->output_pins[i].crop.line_bottom);
++#ifdef IPU8_INSYS_NEW_ABI
++		dev_dbg(dev, "\t.crop.column_left = %d\n",
++			cfg->output_pins[i].crop.column_left);
++		dev_dbg(dev, "\t.crop.colunm_right = %d\n",
++			cfg->output_pins[i].crop.column_right);
++#endif
+
+ 		dev_dbg(dev, "\t.dpcm_enable = %d\n",
+ 			cfg->output_pins[i].dpcm.enable);
+@@ -275,6 +281,20 @@ void ipu7_fw_isys_dump_stream_cfg(struct device *dev,
+ 			cfg->output_pins[i].dpcm.type);
+ 		dev_dbg(dev, "\t.dpcm.predictor = %d\n",
+ 			cfg->output_pins[i].dpcm.predictor);
++#ifdef IPU8_INSYS_NEW_ABI
++		dev_dbg(dev, "\t.upipe_enable = %d\n",
++			cfg->output_pins[i].upipe_enable);
++		dev_dbg(dev, "\t.upipe_pin_cfg.opaque_pin_cfg = %d\n",
++			cfg->output_pins[i].upipe_pin_cfg.opaque_pin_cfg);
++		dev_dbg(dev, "\t.upipe_pin_cfg.plane_offset_1 = %d\n",
++			cfg->output_pins[i].upipe_pin_cfg.plane_offset_1);
++		dev_dbg(dev, "\t.upipe_pin_cfg.plane_offset_2 = %d\n",
++			cfg->output_pins[i].upipe_pin_cfg.plane_offset_2);
++		dev_dbg(dev, "\t.upipe_pin_cfg.singel_uob_fifo = %d\n",
++			cfg->output_pins[i].upipe_pin_cfg.single_uob_fifo);
++		dev_dbg(dev, "\t.upipe_pin_cfg.shared_uob_fifo = %d\n",
++			cfg->output_pins[i].upipe_pin_cfg.shared_uob_fifo);
++#endif
+ 	}
+ 	dev_dbg(dev, "---------------------------\n");
+ }
+@@ -293,9 +313,18 @@ void ipu7_fw_isys_dump_frame_buff_set(struct device *dev,
+
+ 	for (i = 0; i < outputs; i++) {
+ 		dev_dbg(dev, ".output_pin[%d]:\n", i);
++#ifndef IPU8_INSYS_NEW_ABI
+ 		dev_dbg(dev, "\t.user_token = %llx\n",
+ 			buf->output_pins[i].user_token);
+ 		dev_dbg(dev, "\t.addr = 0x%x\n", buf->output_pins[i].addr);
++#else
++		dev_dbg(dev, "\t.pin_payload.user_token = %llx\n",
++			buf->output_pins[i].pin_payload.user_token);
++		dev_dbg(dev, "\t.pin_payload.addr = 0x%x\n",
++			buf->output_pins[i].pin_payload.addr);
++		dev_dbg(dev, "\t.pin_payload.upipe_capture_cfg = 0x%x\n",
++			buf->output_pins[i].upipe_capture_cfg);
++#endif
+ 	}
+ 	dev_dbg(dev, "---------------------------\n");
+ }
+diff --git a/drivers/staging/media/ipu7/ipu7-isys-queue.c b/drivers/staging/media/ipu7/ipu7-isys-queue.c
+index 7046c29141f8..d2e8025cfc63 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys-queue.c
++++ b/drivers/staging/media/ipu7/ipu7-isys-queue.c
+@@ -248,8 +248,14 @@ static void ipu7_isys_buf_to_fw_frame_buf_pin(struct vb2_buffer *vb,
+ 	struct ipu7_isys_video_buffer *ivb =
+ 		vb2_buffer_to_ipu7_isys_video_buffer(vvb);
+
++#ifndef IPU8_INSYS_NEW_ABI
+ 	set->output_pins[aq->fw_output].addr = ivb->dma_addr;
+ 	set->output_pins[aq->fw_output].user_token = (uintptr_t)set;
++#else
++	set->output_pins[aq->fw_output].pin_payload.addr = ivb->dma_addr;
++	set->output_pins[aq->fw_output].pin_payload.user_token = (uintptr_t)set;
++	set->output_pins[aq->fw_output].upipe_capture_cfg = 0;
++#endif
+ }
+
+ /*
+diff --git a/drivers/staging/media/ipu7/ipu7-isys-video.c b/drivers/staging/media/ipu7/ipu7-isys-video.c
+index 173afd405d9b..7ba73545da2f 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys-video.c
++++ b/drivers/staging/media/ipu7/ipu7-isys-video.c
+@@ -420,10 +420,27 @@ static int ipu7_isys_fw_pin_cfg(struct ipu7_isys_video *av,
+ 	/* output pin crop */
+ 	output_pin->crop.line_top = 0;
+ 	output_pin->crop.line_bottom = 0;
++#ifdef IPU8_INSYS_NEW_ABI
++	output_pin->crop.column_left = 0;
++	output_pin->crop.column_right = 0;
++#endif
+
+ 	/* output de-compression */
+ 	output_pin->dpcm.enable = 0;
+
++#ifdef IPU8_INSYS_NEW_ABI
++	/* upipe_cfg */
++	output_pin->upipe_pin_cfg.opaque_pin_cfg = 0;
++	output_pin->upipe_pin_cfg.plane_offset_1 = 0;
++	output_pin->upipe_pin_cfg.plane_offset_2 = 0;
++	output_pin->upipe_pin_cfg.single_uob_fifo = 0;
++	output_pin->upipe_pin_cfg.shared_uob_fifo = 0;
++	output_pin->upipe_enable = 0;
++	output_pin->binning_factor = 0;
++	/* stupid setting, even unused, SW still need to set a valid value */
++	output_pin->cfa_dim = IPU_INSYS_CFA_DIM_2x2;
++#endif
++
+ 	/* frame format type */
+ 	pfmt = ipu7_isys_get_isys_format(av->pix_fmt.pixelformat);
+ 	output_pin->ft = (u16)pfmt->css_pixelformat;
+--
+2.43.0
+
