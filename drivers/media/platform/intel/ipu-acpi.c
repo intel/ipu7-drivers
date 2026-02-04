@@ -57,22 +57,6 @@ static const struct ipu_acpi_devices supported_devices[] = {
  *	{ "ACPI ID", sensor_name, get_sensor_pdata, NULL, 0, TYPE, serdes_name,
  *		sensor_physical_addr, link_freq(mbps) },	// Custom HID
  */
-#if IS_ENABLED(CONFIG_VIDEO_AR0234)
-	{ "INTC10C0", AR0234_NAME, get_sensor_pdata, NULL, 0, TYPE_DIRECT, NULL,
-		AR0234_I2C_ADDRESS, 1200 },	// AR0234 HID
-#endif
-#if IS_ENABLED(CONFIG_VIDEO_LT6911UXC)
-	{ "INTC10B1", LT6911UXC_NAME, get_sensor_pdata, NULL, 0, TYPE_DIRECT, NULL,
-		LT6911UXC_I2C_ADDRESS, 1200 },	// LT6911UXC HID
-#endif
-#if IS_ENABLED(CONFIG_VIDEO_LT6911UXE)
-	{ "INTC10C5", LT6911UXE_NAME, get_sensor_pdata, NULL, 0, TYPE_DIRECT, NULL,
-		LT6911UXE_I2C_ADDRESS, 1200 },	// LT6911UXE HID
-#endif
-#if IS_ENABLED(CONFIG_VIDEO_D4XX)
-	{ "INTC10CD", D457_NAME, get_sensor_pdata, NULL, 0, TYPE_SERDES, D457_NAME,
-		D4XX_I2C_ADDRESS_0, 1200 },	// D457 HID
-#endif
 
 #if IS_ENABLED(CONFIG_VIDEO_MAX9X)
 #if IS_ENABLED(CONFIG_VIDEO_ISX031)
@@ -101,28 +85,9 @@ static const struct acpi_device_id ipu_acpi_match[] = {
 /*
  *	{ "AR0234A", 0 },	// Custom HID
  */
-#if IS_ENABLED(CONFIG_VIDEO_IMX390)
-	{ "INTC10C1", 0 },	// IMX390 HID
-	{ "INTC10CM", 0 },	// D3CMC68N-106-085 IMX390 HID
-#endif
 #if IS_ENABLED(CONFIG_VIDEO_ISX031)
 	{ "INTC1031", 0 },	// ISX031 HID
 	{ "INTC031M", 0 },	// D3CMC68N-115-084 ISX031 HID
-#endif
-#if IS_ENABLED(CONFIG_VIDEO_AR0234)
-	{ "INTC10C0", 0 },	// AR0234 HID
-#endif
-#if IS_ENABLED(CONFIG_VIDEO_LT6911UXC)
-	{ "INTC10B1", 0 },	// LT6911UXC HID
-#endif
-#if IS_ENABLED(CONFIG_VIDEO_LT6911UXE)
-	{ "INTC10C5", 0 },	// LT6911UXE HID
-#endif
-#if IS_ENABLED(CONFIG_VIDEO_OV2311)
-	{ "INTC102R", 0 },	// OV2311 HID
-#endif
-#if IS_ENABLED(CONFIG_VIDEO_D4XX)
-	{ "INTC10CD", 0 },	// D457 HID
 #endif
 	{},
 };
