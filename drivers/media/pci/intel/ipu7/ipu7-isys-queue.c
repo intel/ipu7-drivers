@@ -92,7 +92,9 @@ static int ipu7_isys_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
 static int ipu7_isys_buf_prepare(struct vb2_buffer *vb)
 {
 	struct ipu7_isys_queue *aq = vb2_queue_to_isys_queue(vb->vb2_queue);
+	struct ipu7_isys *isys = vb2_get_drv_priv(vb->vb2_queue);
 	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
+	struct sg_table *sg = vb2_dma_sg_plane_desc(vb, 0);
 	struct device *dev = &av->isys->adev->auxdev.dev;
 	u32 bytesperline = av->pix_fmt.bytesperline;
 	u32 height = av->pix_fmt.height;
@@ -106,6 +108,9 @@ static int ipu7_isys_buf_prepare(struct vb2_buffer *vb)
 	dev_dbg(dev, "buffer: %s: bytesperline %u, height %u\n",
 		av->vdev.name, bytesperline, height);
 	vb2_set_plane_payload(vb, 0, bytesperline * height);
+
+	/* assume IPU is not DMA coherent */
+	ipu7_dma_sync_sgtable(isys->adev, sg);
 
 	return 0;
 }
@@ -756,7 +761,17 @@ static int reset_start_streaming(struct ipu7_isys_video *av)
 		goto out;
 
 	bl = &__bl;
-	ret = buffer_list_get(stream, bl);
+	int retry = 5;
+	while (retry--) {
+		ret = buffer_list_get(stream, bl);
+		if (ret < 0) {
+			dev_dbg(dev, "wait for incoming buffer, retry %d\n", retry);
+			usleep_range(100000, 110000);
+			continue;
+		}
+		break;
+	}
+
 	/*
 	 * In reset start streaming and no buffer available,
 	 * it is considered that gstreamer has been closed,
@@ -898,7 +913,7 @@ static void stop_streaming(struct vb2_queue *q)
 	mutex_lock(&av->isys->reset_mutex);
 	while (av->isys->state) {
 		mutex_unlock(&av->isys->reset_mutex);
-		dev_dbg(dev, "stop: %s: wait for rest or stop, isys->state = %d\n",
+		dev_dbg(dev, "stop: %s: wait for reset or stop, isys->state = %d\n",
 			av->vdev.name, av->isys->state);
 		usleep_range(10000, 11000);
 		mutex_lock(&av->isys->reset_mutex);

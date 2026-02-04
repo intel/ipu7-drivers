@@ -1193,13 +1193,13 @@ int ipu7_isys_video_init(struct ipu7_isys_video *av)
 
 	__ipu_isys_vidioc_try_fmt_vid_cap(av, &format);
 	av->pix_fmt = format.fmt.pix;
+
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	av->reset = false;
 	av->skipframe = 0;
 	av->start_streaming = 0;
 #endif
 
-	set_bit(V4L2_FL_USES_V4L2_FH, &av->vdev.flags);
 	video_set_drvdata(&av->vdev, av);
 
 	ret = video_register_device(&av->vdev, VFL_TYPE_VIDEO, -1);
