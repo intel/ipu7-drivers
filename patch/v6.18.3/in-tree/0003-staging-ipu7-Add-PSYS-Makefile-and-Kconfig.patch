@@ -1,0 +1,50 @@
+From 6a69dcf953751f2e92fd62eece787c14dea29c0c Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Mon, 17 Nov 2025 16:39:47 +0800
+Subject: [PATCH 3/7] staging: ipu7: Add PSYS Makefile and Kconfig
+
+Signed-off-by: Hao Yao <hao.yao@intel.com>
+---
+ drivers/staging/media/ipu7/Kconfig  | 11 ++++++++---
+ drivers/staging/media/ipu7/Makefile |  2 ++
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/Kconfig b/drivers/staging/media/ipu7/Kconfig
+index 7d831ba7501d..561665561b46 100644
+--- a/drivers/staging/media/ipu7/Kconfig
++++ b/drivers/staging/media/ipu7/Kconfig
+@@ -4,7 +4,12 @@ config VIDEO_INTEL_IPU7
+ 	depends on VIDEO_DEV
+ 	depends on X86 && HAS_DMA
+ 	depends on IPU_BRIDGE || !IPU_BRIDGE
+-	depends on PCI
++        #
++        # This driver incorrectly tries to override the dma_ops.  It should
++        # never have done that, but for now keep it working on architectures
++        # that use dma ops
++        #
++        depends on ARCH_HAS_DMA_OPS
+ 	select AUXILIARY_BUS
+ 	select IOMMU_IOVA
+ 	select VIDEO_V4L2_SUBDEV_API
+@@ -15,5 +20,5 @@ config VIDEO_INTEL_IPU7
+ 	  This is the 7th Gen Intel Image Processing Unit, found in Intel SoCs
+ 	  and used for capturing images and video from camera sensors.
+
+-	  To compile this driver, say Y here! It contains 2 modules -
+-	  intel_ipu7 and intel_ipu7_isys.
++	  To compile this driver, say Y here! It contains 3 modules -
++	  intel_ipu7, intel_ipu7_isys and intel_ipu7_psys.
+diff --git a/drivers/staging/media/ipu7/Makefile b/drivers/staging/media/ipu7/Makefile
+index 6d2aec219e65..8c62d730e5f8 100644
+--- a/drivers/staging/media/ipu7/Makefile
++++ b/drivers/staging/media/ipu7/Makefile
+@@ -21,3 +21,5 @@ intel-ipu7-isys-objs			+= ipu7-isys.o \
+ 					   ipu7-isys-subdev.o
+
+ obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= intel-ipu7-isys.o
++
++obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= psys/
+--
+2.43.0
+
