@@ -8,6 +8,7 @@ MODSRC := $(shell pwd)
 export EXTERNAL_BUILD = 1
 export CONFIG_VIDEO_INTEL_IPU7 = m
 export CONFIG_IPU_BRIDGE = y
+export BUILD_INTEL_IPU_ACPI=y
 
 # Default: only build IPU7 drivers (no ACPI)
 obj-y += drivers/media/pci/intel/ipu7/
