@@ -25,10 +25,6 @@
 #include "ipu7-isys-csi2.h"
 #include "ipu7-isys-video.h"
 
-#ifdef CONFIG_DEBUG_FS
-struct dentry;
-
-#endif
 #define IPU_ISYS_ENTITY_PREFIX		"Intel IPU7"
 
 /* FW support max 16 streams */
@@ -106,10 +102,6 @@ struct ipu7_isys {
 	bool csi2_cse_ipc_not_supported;
 	unsigned int ref_count;
 	unsigned int stream_opened;
-
-#ifdef CONFIG_DEBUG_FS
-	struct dentry *debugfsdir;
-#endif
 	struct mutex mutex;	/* Serialise isys video open/release related */
 	struct mutex stream_mutex;	/* Stream start, stop, queueing reqs */
 
