@@ -107,9 +107,6 @@ struct ipu7_isys {
 	unsigned int ref_count;
 	unsigned int stream_opened;
 
-#ifdef CONFIG_DEBUG_FS
-	struct dentry *debugfsdir;
-#endif
 	struct mutex mutex;	/* Serialise isys video open/release related */
 	struct mutex stream_mutex;	/* Stream start, stop, queueing reqs */
 
