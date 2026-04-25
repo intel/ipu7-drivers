@@ -1310,7 +1310,7 @@ static int ipu7_psys_init_debugfs(struct ipu7_psys *psys)
 	struct dentry *file;
 	struct dentry *dir;
 
-	dir = debugfs_create_dir("psys", psys->adev->isp->ipu7_dir);
+	dir = debugfs_create_dir("ipu7-psys", NULL);
 	if (IS_ERR(dir))
 		return -ENOMEM;
 
@@ -1342,7 +1342,7 @@ static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 	unsigned int i;
 	int ret;
 
-	if (!adev->isp->ipu7_bus_ready_to_probe)
+	if (adev->isp->ipu7_bus_ready_to_probe)
 		return -EPROBE_DEFER;
 
 	ret = alloc_chrdev_region(&ipu7_psys_dev_t, 0,
