@@ -922,10 +922,16 @@ static void stop_streaming(struct vb2_queue *q)
 	if (stream->nr_streaming == stream->nr_queues && stream->streaming)
 		ret = ipu7_isys_video_set_streaming(av, 0, NULL);
 	mutex_unlock(&av->isys->stream_mutex);
-	if (ret) {
-		dev_err(dev, "stop: video set streaming failed\n");
-		mutex_unlock(&stream->mutex);
-		return;
+	if (ret == -EALREADY) {
+		/*
+		 * Benign: a sibling VC sharing the same CSI2 receiver has
+		 * already torn down the shared link. Continue cleanup.
+		 */
+		dev_dbg(dev, "stop: shared link already disabled, continuing teardown\n");
+	} else if (ret) {
+		dev_err(dev,
+			"stop: video set streaming failed (%d), continuing teardown to honour vb2 contract\n",
+			ret);
 	}
 
 	stream->nr_streaming--;
@@ -971,11 +977,17 @@ static void stop_streaming(struct vb2_queue *q)
 	if (stream->nr_streaming == stream->nr_queues && stream->streaming)
 		ret = ipu7_isys_video_set_streaming(av, 0, NULL);
 	mutex_unlock(&av->isys->stream_mutex);
-	if (ret) {
+	if (ret == -EALREADY) {
+		/*
+		 * Benign: a sibling VC sharing the same CSI2 receiver has
+		 * already torn down the shared link. Continue cleanup.
+		 */
+		dev_dbg(&av->isys->adev->auxdev.dev,
+			"stop: shared link already disabled, continuing teardown\n");
+	} else if (ret) {
 		dev_err(&av->isys->adev->auxdev.dev,
-			"stop: video set streaming failed\n");
-		mutex_unlock(&stream->mutex);
-		return;
+			"stop: video set streaming failed (%d), continuing teardown to honour vb2 contract\n",
+			ret);
 	}
 
 	stream->nr_streaming--;
