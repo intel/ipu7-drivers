@@ -523,6 +523,12 @@ static void return_buffers(struct ipu7_isys_queue *aq,
 	 * Something went wrong (FW crash / HW hang / not all buffers
 	 * returned from isys) if there are still buffers queued in active
 	 * queue. We have to clean up places a bit.
+	 *
+	 * Note: We intentionally do NOT set need_reset here. Active buffers
+	 * remaining during a normal orderly stop is expected (the FW discards
+	 * pending STREAM_CAPTURE commands on STREAM_FLUSH). Setting need_reset
+	 * would trigger an ISYS reset cascade that disrupts other streams.
+	 * need_reset is only set in ipu7_isys_fw_close() on actual FW timeout.
 	 */
 	while (!list_empty(&aq->active)) {
 		ib = list_last_entry(&aq->active, struct ipu7_isys_buffer,
