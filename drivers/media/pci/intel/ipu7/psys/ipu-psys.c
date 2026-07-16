@@ -1541,7 +1541,28 @@ static struct auxiliary_driver ipu7_psys_driver = {
 	},
 };
 
-module_auxiliary_driver(ipu7_psys_driver);
+static int __init ipu7_psys_init(void)
+{
+	int ret;
+
+	ret = bus_register(&ipu7_psys_bus);
+	if (ret)
+		return ret;
+
+	ret = auxiliary_driver_register(&ipu7_psys_driver);
+	if (ret)
+		bus_unregister(&ipu7_psys_bus);
+
+	return ret;
+}
+module_init(ipu7_psys_init);
+
+static void __exit ipu7_psys_exit(void)
+{
+	auxiliary_driver_unregister(&ipu7_psys_driver);
+	bus_unregister(&ipu7_psys_bus);
+}
+module_exit(ipu7_psys_exit);
 
 MODULE_AUTHOR("Bingbu Cao <bingbu.cao@intel.com>");
 MODULE_AUTHOR("Qingwu Zhang <qingwu.zhang@intel.com>");
