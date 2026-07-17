@@ -219,8 +219,6 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
 		}
 	}
 
-	mmu->tlb_invalidate(mmu);
-
 	info->vaddr = vmap(pages, count, VM_USERMAP, PAGE_KERNEL);
 	if (!info->vaddr)
 		goto out_unmap;
@@ -265,16 +263,12 @@ void ipu7_dma_free(struct ipu7_bus_device *sys, size_t size, void *vaddr,
 {
 	struct ipu7_mmu *mmu = sys->mmu;
 	struct pci_dev *pdev = sys->isp->pdev;
-	struct iova *iova;
+	struct iova *iova = find_iova(&mmu->dmap->iovad, PHYS_PFN(dma_handle));
 	dma_addr_t pci_dma_addr, ipu7_iova;
 	struct vm_info *info;
 	struct page **pages;
 	unsigned int i;
 
-	if (!mmu || !mmu->dmap)
-		return;
-
-	iova = find_iova(&mmu->dmap->iovad, PHYS_PFN(dma_handle));
 	if (WARN_ON(!iova))
 		return;
 
@@ -360,7 +354,8 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 {
 	struct device *dev = &sys->auxdev.dev;
 	struct ipu7_mmu *mmu = sys->mmu;
-	struct iova *iova;
+	struct iova *iova = find_iova(&mmu->dmap->iovad,
+				      PHYS_PFN(sg_dma_address(sglist)));
 	struct scatterlist *sg;
 	dma_addr_t pci_dma_addr;
 	unsigned int i;
@@ -368,10 +363,6 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 	if (!nents)
 		return;
 
-	if (!mmu || !mmu->dmap)
-		return;
-
-	iova = find_iova(&mmu->dmap->iovad, PHYS_PFN(sg_dma_address(sglist)));
 	if (WARN_ON(!iova))
 		return;
 

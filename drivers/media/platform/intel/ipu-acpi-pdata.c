@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2016-2026 Intel Corporation.
+ * Copyright (c) 2016-2025 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version
@@ -125,13 +125,6 @@ static void print_serdes_sdinfo(struct serdes_subdev_info *sdinfo)
 	pr_debug("\t\tsuffix \t\t\t= %s", sdinfo->suffix);
 	pr_debug("\t\tboard_info.type \t= %s", sdinfo->board_info.type);
 	pr_debug("\t\tboard_info.addr \t= 0x%x", sdinfo->board_info.addr);
-	pr_debug("\t\tser_gpio \t\t= ");
-	for (i = 0; i < MAX_SER_GPIO_NUM; i++) {
-		pr_debug("\t\t\t\t\tpin[%d] = %d, func = %s, flags = %lu", i,
-			 sdinfo->ser_gpio[i].chip_hwnum,
-			 sdinfo->ser_gpio[i].con_id, sdinfo->ser_gpio[i].flags);
-	}
-	pr_debug("\t\tsensor_dt \t\t= %x", sdinfo->sensor_dt);
 
 	pr_debug("serdes board_info.platform_data");
 	pr_debug("\t\tlanes \t\t\t= %d", sd_mpdata->lanes);
@@ -217,7 +210,7 @@ static void print_subdev(struct ipu_isys_subdev_info *sd)
 	pr_debug("\t\ti2c_slave_address \t= 0x%x", spdata->i2c_slave_address);
 	pr_debug("\t\tirq_pin \t\t= %d", spdata->irq_pin);
 	pr_debug("\t\tirq_pin_name \t\t= %s", spdata->irq_pin_name);
-	pr_debug("\t\tsuffix \t\t\t= %s", spdata->suffix);
+	pr_debug("\t\tsuffix \t\t\t= %c", spdata->suffix);
 	pr_debug("\t\treset_pin \t\t= %d", spdata->reset_pin);
 	pr_debug("\t\tdetect_pin \t\t= %d", spdata->detect_pin);
 
@@ -262,21 +255,10 @@ static void update_hex(struct device *dev,
 	}
 }
 
-static void update_uint(struct device *dev,
+static void update_int(struct device *dev,
 		char msg[MSG_LEN],
 		unsigned int *old_int,
 		unsigned int new_int)
-{
-	if (*old_int != new_int) {
-		dev_info(dev, "%s %u -> %u", msg, *old_int, new_int);
-		*old_int = new_int;
-	}
-}
-
-static void update_int(struct device *dev,
-		char msg[MSG_LEN],
-		int *old_int,
-		int new_int)
 {
 	if (*old_int != new_int) {
 		dev_info(dev, "%s %d -> %d", msg, *old_int, new_int);
@@ -322,8 +304,8 @@ static void update_subdev(struct device *dev,
 					new_sd->i2c.board_info.platform_data;
 
 	/* csi2 */
-	update_uint(dev, "CSI2 port", &(*old_sd)->csi2->port, new_sd->csi2->port);
-	update_uint(dev, "CSI2 nlanes", &(*old_sd)->csi2->nlanes, new_sd->csi2->nlanes);
+	update_int(dev, "CSI2 port", &(*old_sd)->csi2->port, new_sd->csi2->port);
+	update_int(dev, "CSI2 nlanes", &(*old_sd)->csi2->nlanes, new_sd->csi2->nlanes);
 
 	/* i2c */
 	update_short(dev, "I2C board_info addr", &(*old_sd)->i2c.board_info.addr,
@@ -332,8 +314,8 @@ static void update_subdev(struct device *dev,
 		new_sd->i2c.i2c_adapter_bdf);
 
 	/* platform data */
-	update_uint(dev, "pdata port", &(old_pdata)->port, new_pdata->port);
-	update_uint(dev, "pdata lanes", &(old_pdata)->lanes, new_pdata->lanes);
+	update_int(dev, "pdata port", &(old_pdata)->port, new_pdata->port);
+	update_int(dev, "pdata lanes", &(old_pdata)->lanes, new_pdata->lanes);
 	update_hex(dev, "pdata I2C slave addr", &(old_pdata)->i2c_slave_address,
 		new_pdata->i2c_slave_address);
 	update_int(dev, "pdata irq_pin", &(old_pdata)->irq_pin, new_pdata->irq_pin);
@@ -358,8 +340,8 @@ static void update_serdes_subdev(struct device *dev,
 	struct serdes_module_pdata *old_mpdata, *new_mpdata;
 
 	/* csi2 */
-	update_uint(dev, "CSI2 port", &(*old_sd)->csi2->port, new_sd->csi2->port);
-	update_uint(dev, "CSI2 nlanes", &(*old_sd)->csi2->nlanes, new_sd->csi2->nlanes);
+	update_int(dev, "CSI2 port", &(*old_sd)->csi2->port, new_sd->csi2->port);
+	update_int(dev, "CSI2 nlanes", &(*old_sd)->csi2->nlanes, new_sd->csi2->nlanes);
 
 	/* i2c */
 	update_short(dev, "I2C board_info addr", &(*old_sd)->i2c.board_info.addr,
@@ -367,9 +349,9 @@ static void update_serdes_subdev(struct device *dev,
 	update_str(dev, "I2C i2c_adapter_bdf", (*old_sd)->i2c.i2c_adapter_bdf,
 		new_sd->i2c.i2c_adapter_bdf);
 
-	update_uint(dev, "I2C Pdata reset_gpio", &old_pdata->reset_gpio,
+	update_int(dev, "I2C Pdata reset_gpio", &old_pdata->reset_gpio,
 		new_pdata->reset_gpio);
-	update_uint(dev, "I2C Pdata FPD_gpio", &old_pdata->FPD_gpio, new_pdata->FPD_gpio);
+	update_int(dev, "I2C Pdata FPD_gpio", &old_pdata->FPD_gpio, new_pdata->FPD_gpio);
 
 	/* platform data */
 	for (i = 0; i < SERDES_MAX_PORT; i++) {
@@ -380,7 +362,7 @@ static void update_serdes_subdev(struct device *dev,
 		new_mpdata = new_sdinfo->board_info.platform_data;
 
 		if (!strcmp(old_sdinfo->board_info.type, new_sdinfo->board_info.type) &&
-			!strcmp(old_sdinfo->suffix, new_sdinfo->suffix)) {
+			old_sdinfo->suffix == new_sdinfo->suffix) {
 			update_short(dev, "SdInfo port", &old_sdinfo->rx_port,
 				new_sdinfo->rx_port);
 			update_short(dev, "SdInfo ser_alias", &old_sdinfo->ser_alias,
@@ -389,7 +371,7 @@ static void update_serdes_subdev(struct device *dev,
 				new_sdinfo->board_info.addr);
 
 			if (!strcmp(old_mpdata->module_name, new_mpdata->module_name)) {
-				update_uint(dev, "mPdata lanes", &old_mpdata->lanes,
+				update_int(dev, "mPdata lanes", &old_mpdata->lanes,
 					new_mpdata->lanes);
 				update_int(dev, "mPdata fsin", &old_mpdata->fsin,
 					new_mpdata->fsin);
@@ -428,8 +410,8 @@ static int compare_subdev(struct device *dev,
 			new_pdata = (struct sensor_platform_data *)
 					new_subdev->i2c.board_info.platform_data;
 
-			if (!strcmp(old_pdata->suffix, new_pdata->suffix)) {
-				dev_info(dev, "Found matching sensor : %s %s",
+			if (old_pdata->suffix == new_pdata->suffix) {
+				dev_info(dev, "Found matching sensor : %s %c",
 					old_subdev->i2c.board_info.type,
 					old_pdata->suffix);
 				return 0;
@@ -504,7 +486,7 @@ static void update_pdata(struct device *dev,
 				acpi_pdata = (struct sensor_platform_data *)
 					acpi_subdev->i2c.board_info.platform_data;
 
-				dev_err(dev, "Pdata does not contain %s %s\n",
+				dev_err(dev, "Pdata does not contain %s %c\n",
 					acpi_subdev->i2c.board_info.type,
 					acpi_pdata->suffix);
 
@@ -712,10 +694,10 @@ static int set_serdes_subdev(struct ipu_isys_subdev_info **serdes_sd,
 		serdes_sdinfo[i].phy_i2c_addr = serdes_info.phy_i2c_addr;
 		snprintf(serdes_sdinfo[i].suffix, sizeof(serdes_sdinfo[i].suffix), "%c-%d",
 			 SUFFIX_BASE + i, port);
-		serdes_sdinfo[i].ser_phys_addr = serdes_info.ser_phys_addr;
-
-		memcpy(serdes_sdinfo[i].ser_gpio, serdes_info.ser_gpio, sizeof(struct gpiod_lookup) * MAX_SER_GPIO_NUM);
-		serdes_sdinfo[i].sensor_dt = serdes_info.sensor_dt;
+#if IS_ENABLED(CONFIG_VIDEO_ISX031)
+		serdes_sdinfo[i].ser_phys_addr = 0x40;
+		serdes_sdinfo[i].sensor_dt = 0x1e;
+#endif
 	}
 
 	(*pdata)->subdev_info = serdes_sdinfo;
@@ -750,7 +732,7 @@ static int set_pdata(struct ipu_isys_subdev_info **sensor_sd,
 		/* use ascii */
 		/* port for start from 0 */
 		if (port >= 0) {
-			snprintf(pdata->suffix, sizeof(pdata->suffix), "%c", port + SUFFIX_BASE);
+			pdata->suffix = port + SUFFIX_BASE;
 			pr_info("IPU ACPI: create %s on port %d",
 				sensor_name, port);
 		} else
@@ -811,10 +793,7 @@ static int set_pdata(struct ipu_isys_subdev_info **sensor_sd,
 static void set_serdes_info(struct device *dev, const char *sensor_name,
 			    const char *serdes_name,
 			    struct sensor_bios_data *cam_data,
-			    int sensor_physical_addr,
-			    int ser_physical_addr,
-			    const struct gpiod_lookup *ser_gpio,
-			    unsigned int sensor_dt)
+			    int sensor_physical_addr)
 {
 	int i;
 
@@ -828,8 +807,6 @@ static void set_serdes_info(struct device *dev, const char *sensor_name,
 	i = 1;
 	/* serializer mapped addr */
 	serdes_info.ser_map_addr = cam_data->i2c[i++].addr;
-	/* serializer physical addr */
-	serdes_info.ser_phys_addr = ser_physical_addr;
 	/* sensor mapped addr */
 	serdes_info.sensor_map_addr = cam_data->i2c[i++].addr;
 
@@ -844,14 +821,6 @@ static void set_serdes_info(struct device *dev, const char *sensor_name,
 		serdes_info.gpio_powerup_seq = 0;
 
 	serdes_info.phy_i2c_addr = sensor_physical_addr;
-
-	/* ser_gpio is random numbering. re-order and only update serdes_info.ser_gpio if valid. */
-	for (int i = 0; i < MAX_SER_GPIO_NUM; i++) {
-		if (ser_gpio[i].chip_hwnum < MAX_SER_GPIO_NUM &&
-		    ser_gpio[i].con_id)
-			serdes_info.ser_gpio[i] = ser_gpio[i];
-	}
-	serdes_info.sensor_dt = sensor_dt;
 }
 
 #if IS_ENABLED(CONFIG_VIDEO_LT6911UXC) || IS_ENABLED(CONFIG_VIDEO_LT6911UXE)
@@ -903,10 +872,7 @@ static int populate_sensor_pdata(struct device *dev,
 			const char *serdes_name,
 			const char *hid_name,
 			int sensor_physical_addr,
-			int link_freq,
-			int ser_physical_addr,
-			const struct gpiod_lookup *ser_gpio,
-			unsigned int sensor_dt)
+			int link_freq)
 {
 	int ret;
 
@@ -972,7 +938,7 @@ static int populate_sensor_pdata(struct device *dev,
 		}
 
 		/* local serdes info */
-		set_serdes_info(dev, sensor_name, serdes_name, cam_data, sensor_physical_addr, ser_physical_addr, ser_gpio, sensor_dt);
+		set_serdes_info(dev, sensor_name, serdes_name, cam_data, sensor_physical_addr);
 	}
 
 	/* Use last I2C device */
@@ -999,12 +965,12 @@ static int populate_sensor_pdata(struct device *dev,
 	return 0;
 }
 
-int get_sensor_pdata(struct device *dev, struct ipu_camera_module_data *data,
-		     void *priv, size_t size, enum connection_type connect,
-		     const char *sensor_name, const char *serdes_name,
-		     const char *hid_name, int sensor_physical_addr,
-		     int link_freq, int ser_physical_addr, const struct gpiod_lookup *ser_gpio,
-		     unsigned int sensor_dt)
+int get_sensor_pdata(struct device *dev,
+			struct ipu_camera_module_data *data,
+			void *priv, size_t size,
+			enum connection_type connect, const char *sensor_name,
+			const char *serdes_name, const char *hid_name,
+			int sensor_physical_addr, int link_freq)
 {
 	struct sensor_bios_data *cam_data;
 	struct control_logic_data *ctl_data;
@@ -1052,9 +1018,8 @@ int get_sensor_pdata(struct device *dev, struct ipu_camera_module_data *data,
 
 	/* populate pdata */
 	rval = populate_sensor_pdata(dev, &sensor_sd, cam_data, ctl_data,
-				     connect, sensor_name, serdes_name,
-				     hid_name, sensor_physical_addr, link_freq, ser_physical_addr, ser_gpio,
-				     sensor_dt);
+				     connect, sensor_name, serdes_name, hid_name,
+				     sensor_physical_addr, link_freq);
 	if (rval) {
 		kfree(sensor_sd);
 		kfree(cam_data);

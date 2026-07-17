@@ -1,8 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright (C) 2023-2026 Intel Corporation */
-#ifndef _MEDIA_IPU_ACPI_PDATA_H_
-#define _MEDIA_IPU_ACPI_PDATA_H_
-
+/* Copyright (C) 2023-2025 Intel Corporation */
 #include <linux/interrupt.h>
 #include <media/ipu-acpi.h>
 #include <media/v4l2-mediabus.h>
@@ -27,10 +24,7 @@ int get_sensor_pdata(struct device *dev,
 			const char *serdes_name,
 			const char *hid_name,
 			int sensor_physical_addr,
-			int link_freq,
-			int ser_physical_addr,
-			const struct gpiod_lookup *ser_gpio,
-			unsigned int sensor_dt);
+			int link_freq);
 
 struct ipu_isys_subdev_pdata *get_acpi_subdev_pdata(void);
 
@@ -43,7 +37,7 @@ struct sensor_platform_data {
 	char irq_pin_name[IPU_SPDATA_IRQ_PIN_NAME_LEN];
 	int reset_pin;
 	int detect_pin;
-	char suffix[MAX_SUFFIX_LEN];
+	char suffix;
 	int gpios[IPU_SPDATA_GPIO_NUM];
 };
 
@@ -57,7 +51,7 @@ struct serdes_module_pdata {
 	char gpio_powerup_seq[SERDES_MAX_GPIO_POWERUP_SEQ];
 	unsigned int module_flags;
 	char module_name[I2C_NAME_SIZE];
-	char suffix[MAX_SUFFIX_LEN];
+	char suffix;
 };
 
 struct serdes_local {
@@ -97,15 +91,4 @@ struct serdes_local {
 
 	/* counter for total deser connected */
 	unsigned int deser_num;
-
-	/* serializer physical addr */
-	unsigned short ser_phys_addr;
-
-	/* serializer gpio */
-	struct gpiod_lookup ser_gpio[MAX_SER_GPIO_NUM];
-
-	/* sensor data type */
-	unsigned int sensor_dt;
 };
-
-#endif

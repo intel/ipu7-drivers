@@ -455,12 +455,15 @@ static int ipu7_isys_fw_pin_cfg(struct ipu7_isys_video *av,
 	/* output pin crop */
 	output_pin->crop.line_top = 0;
 	output_pin->crop.line_bottom = 0;
+#ifdef IPU8_INSYS_NEW_ABI
 	output_pin->crop.column_left = 0;
 	output_pin->crop.column_right = 0;
+#endif
 
 	/* output de-compression */
 	output_pin->dpcm.enable = 0;
 
+#ifdef IPU8_INSYS_NEW_ABI
 	/* upipe_cfg */
 	output_pin->upipe_pin_cfg.opaque_pin_cfg = 0;
 	output_pin->upipe_pin_cfg.plane_offset_1 = 0;
@@ -471,6 +474,7 @@ static int ipu7_isys_fw_pin_cfg(struct ipu7_isys_video *av,
 	output_pin->binning_factor = 0;
 	/* stupid setting, even unused, SW still need to set a valid value */
 	output_pin->cfa_dim = IPU_INSYS_CFA_DIM_2x2;
+#endif
 
 	/* frame format type */
 	pfmt = ipu7_isys_get_isys_format(av->pix_fmt.pixelformat);
@@ -989,12 +993,19 @@ out:
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 void ipu7_isys_fw_close(struct ipu7_isys *isys)
 {
+	int ret = 0;
+
 	mutex_lock(&isys->mutex);
-
 	isys->ref_count--;
-
-	if (!isys->ref_count)
-		ipu7_fw_isys_close(isys);
+	if (!isys->ref_count) {
+		/* need reset when fw close is abnormal */
+		ret = ipu7_fw_isys_close(isys);
+		if (ret) {
+			mutex_lock(&isys->reset_mutex);
+			isys->need_reset = true;
+			mutex_unlock(&isys->reset_mutex);
+		}
+	}
 
 	mutex_unlock(&isys->mutex);
 
@@ -1155,13 +1166,13 @@ int ipu7_isys_video_init(struct ipu7_isys_video *av)
 
 	__ipu_isys_vidioc_try_fmt_vid_cap(av, &format);
 	av->pix_fmt = format.fmt.pix;
-
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	av->reset = false;
 	av->skipframe = 0;
 	av->start_streaming = 0;
 #endif
 
+	set_bit(V4L2_FL_USES_V4L2_FH, &av->vdev.flags);
 	video_set_drvdata(&av->vdev, av);
 
 	ret = video_register_device(&av->vdev, VFL_TYPE_VIDEO, -1);

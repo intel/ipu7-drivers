@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2016-2026 Intel Corporation.
+ * Copyright (c) 2016-2025 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version
@@ -13,13 +13,12 @@
  *
  */
 
-#ifndef _MEDIA_IPU_ACPI_H_
-#define _MEDIA_IPU_ACPI_H_
+#ifndef MEDIA_INTEL_IPU_ACPI_H
+#define MEDIA_INTEL_IPU_ACPI_H
 
 #include <linux/version.h>
 
 #include <linux/clkdev.h>
-#include <linux/gpio/machine.h>
 #include <linux/i2c.h>
 
 #include <media/v4l2-mediabus.h>
@@ -57,7 +56,6 @@ struct ipu_isys_subdev_pdata {
 #define MAX_ACPI_SENSOR_NUM	4
 #define MAX_ACPI_I2C_NUM	12
 #define MAX_ACPI_GPIO_NUM	12
-#define MAX_SER_GPIO_NUM	11
 
 #define GPIO_RESET		0x0
 #define GPIO_POWER_EN		0xb
@@ -66,9 +64,6 @@ struct ipu_isys_subdev_pdata {
 
 #define IPU_SPDATA_GPIO_NUM	4
 #define IPU_SPDATA_IRQ_PIN_NAME_LEN 16
-#define MAX_SUFFIX_LEN 5
-
-#define MIPI_CSI2_TYPE_YUV422_8 0x1e
 
 void set_built_in_pdata(struct ipu_isys_subdev_pdata *pdata);
 
@@ -234,19 +229,13 @@ struct ipu_acpi_devices {
 				 const char *serdes_name,
 				 const char *hid_name,
 				 int sensor_physical_addr,
-				 int link_freq,
-				 int ser_physical_addr,
-				 const struct gpiod_lookup *ser_gpio,
-				 unsigned int sensor_dt);
+				 int link_freq);
 	void *priv_data;
 	size_t priv_size;
 	enum connection_type connect;
 	const char *serdes_name;
 	int sensor_physical_addr;
 	int link_freq; /* in mbps */
-	int ser_physical_addr;
-	struct gpiod_lookup ser_gpio[MAX_SER_GPIO_NUM];
-	unsigned int sensor_dt;
 };
 
 #endif

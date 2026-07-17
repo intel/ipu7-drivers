@@ -84,10 +84,8 @@ static int ipu7_psys_get_userpages(struct ipu7_dma_buf_attach *attach)
 	flags = FOLL_WRITE | FOLL_FORCE | FOLL_LONGTERM;
 	nr = pin_user_pages_fast(start & PAGE_MASK, npages,
 				 flags, pages);
-	if (nr < npages) {
-		ret = nr < 0 ? nr : -EFAULT;
+	if (nr < npages)
 		goto error;
-	}
 
 	attach->pages = pages;
 	attach->npages = npages;
@@ -105,7 +103,7 @@ static int ipu7_psys_get_userpages(struct ipu7_dma_buf_attach *attach)
 error_up_read:
 	mmap_read_unlock(current->mm);
 error:
-	if (nr > 0)
+	if (nr)
 		unpin_user_pages(pages, nr);
 
 	kvfree(pages);

@@ -92,9 +92,7 @@ static int ipu7_isys_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
 static int ipu7_isys_buf_prepare(struct vb2_buffer *vb)
 {
 	struct ipu7_isys_queue *aq = vb2_queue_to_isys_queue(vb->vb2_queue);
-	struct ipu7_isys *isys = vb2_get_drv_priv(vb->vb2_queue);
 	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
-	struct sg_table *sg = vb2_dma_sg_plane_desc(vb, 0);
 	struct device *dev = &av->isys->adev->auxdev.dev;
 	u32 bytesperline = av->pix_fmt.bytesperline;
 	u32 height = av->pix_fmt.height;
@@ -108,9 +106,6 @@ static int ipu7_isys_buf_prepare(struct vb2_buffer *vb)
 	dev_dbg(dev, "buffer: %s: bytesperline %u, height %u\n",
 		av->vdev.name, bytesperline, height);
 	vb2_set_plane_payload(vb, 0, bytesperline * height);
-
-	/* assume IPU is not DMA coherent */
-	ipu7_dma_sync_sgtable(isys->adev, sg);
 
 	return 0;
 }
@@ -270,9 +265,14 @@ static void ipu7_isys_buf_to_fw_frame_buf_pin(struct vb2_buffer *vb,
 	struct ipu7_isys_video_buffer *ivb =
 		vb2_buffer_to_ipu7_isys_video_buffer(vvb);
 
+#ifndef IPU8_INSYS_NEW_ABI
+	set->output_pins[aq->fw_output].addr = ivb->dma_addr;
+	set->output_pins[aq->fw_output].user_token = (uintptr_t)set;
+#else
 	set->output_pins[aq->fw_output].pin_payload.addr = ivb->dma_addr;
 	set->output_pins[aq->fw_output].pin_payload.user_token = (uintptr_t)set;
 	set->output_pins[aq->fw_output].upipe_capture_cfg = 0;
+#endif
 }
 
 /*
@@ -514,6 +514,10 @@ static int ipu7_isys_link_fmt_validate(struct ipu7_isys_queue *aq)
 static void return_buffers(struct ipu7_isys_queue *aq,
 			   enum vb2_buffer_state state)
 {
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	bool need_reset = false;
+	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
+#endif
 	struct ipu7_isys_buffer *ib;
 	struct vb2_buffer *vb;
 	unsigned long flags;
@@ -535,6 +539,9 @@ static void return_buffers(struct ipu7_isys_queue *aq,
 		vb2_buffer_done(vb, state);
 
 		spin_lock_irqsave(&aq->lock, flags);
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+		need_reset = true;
+#endif
 	}
 
 	while (!list_empty(&aq->incoming)) {
@@ -550,6 +557,14 @@ static void return_buffers(struct ipu7_isys_queue *aq,
 	}
 
 	spin_unlock_irqrestore(&aq->lock, flags);
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+
+	if (need_reset) {
+		mutex_lock(&av->isys->reset_mutex);
+		av->isys->need_reset = true;
+		mutex_unlock(&av->isys->reset_mutex);
+	}
+#endif
 }
 
 static void ipu7_isys_stream_cleanup(struct ipu7_isys_video *av)
@@ -740,17 +755,7 @@ static int reset_start_streaming(struct ipu7_isys_video *av)
 		goto out;
 
 	bl = &__bl;
-	int retry = 5;
-	while (retry--) {
-		ret = buffer_list_get(stream, bl);
-		if (ret < 0) {
-			dev_dbg(dev, "wait for incoming buffer, retry %d\n", retry);
-			usleep_range(100000, 110000);
-			continue;
-		}
-		break;
-	}
-
+	ret = buffer_list_get(stream, bl);
 	/*
 	 * In reset start streaming and no buffer available,
 	 * it is considered that gstreamer has been closed,
@@ -892,7 +897,7 @@ static void stop_streaming(struct vb2_queue *q)
 	mutex_lock(&av->isys->reset_mutex);
 	while (av->isys->state) {
 		mutex_unlock(&av->isys->reset_mutex);
-		dev_dbg(dev, "stop: %s: wait for reset or stop, isys->state = %d\n",
+		dev_dbg(dev, "stop: %s: wait for rest or stop, isys->state = %d\n",
 			av->vdev.name, av->isys->state);
 		usleep_range(10000, 11000);
 		mutex_lock(&av->isys->reset_mutex);
@@ -1091,9 +1096,6 @@ void ipu7_isys_queue_buf_ready(struct ipu7_isys_stream *stream,
 	struct device *dev = &isys->adev->auxdev.dev;
 	struct ipu7_isys_buffer *ib;
 	struct vb2_buffer *vb;
-#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
-	struct vb2_v4l2_buffer *vbuf;
-#endif
 	unsigned long flags;
 	bool first = true;
 	struct vb2_v4l2_buffer *buf;
@@ -1138,14 +1140,6 @@ void ipu7_isys_queue_buf_ready(struct ipu7_isys_stream *stream,
 
 		ipu7_isys_buf_calc_sequence_time(ib, time);
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
-		if (!IA_GOFO_MSG_ERR_IS_OK(info->error_info)){
-			vbuf = to_vb2_v4l2_buffer(vb);
-			dev_dbg(dev, "buffer:%s sequence %u frame error, skip frame\n",
-				ipu7_isys_queue_to_video(aq)->vdev.name, vbuf->sequence);
-			atomic_set(&ib->skipframe_flag, 1);
-		}
-#endif
 		ipu7_isys_queue_buf_done(ib);
 
 		return;
