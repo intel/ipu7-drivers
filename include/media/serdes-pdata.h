@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright (C) 2023-2026 Intel Corporation */
+/* Copyright (C) 2023-2025 Intel Corporation */
 
-#ifndef _MEDIA_SERDES_PDATA_H_
-#define _MEDIA_SERDES_PDATA_H_
+#ifndef MEDIA_SERDES_PDATA_H
+#define MEDIA_SERDES_PDATA_H
 
 #if IS_ENABLED(CONFIG_VIDEO_AR0234)
 #include <media/i2c/ar0234.h>
@@ -22,8 +22,9 @@
 #if IS_ENABLED(CONFIG_VIDEO_IMX390)
 #include <media/i2c/imx390.h>
 #endif
-
-#include <media/ipu-acpi.h>
+#if IS_ENABLED(CONFIG_VIDEO_ISX031)
+#include <media/i2c/isx031.h>
+#endif
 
 struct serdes_subdev_info {
 	struct i2c_board_info board_info;
@@ -31,10 +32,9 @@ struct serdes_subdev_info {
 	unsigned short rx_port;
 	unsigned short phy_i2c_addr;
 	unsigned short ser_alias;
-	char suffix[MAX_SUFFIX_LEN]; /* suffix for subdevs */
+	char suffix[5]; /* suffix for subdevs */
 	unsigned short ser_phys_addr;
 	unsigned int sensor_dt;
-	struct gpiod_lookup ser_gpio[MAX_SER_GPIO_NUM];
 };
 
 struct serdes_platform_data {

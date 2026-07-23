@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2016-2026 Intel Corporation.
+ * Copyright (c) 2016-2025 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version
@@ -36,10 +36,6 @@
 #include <media/ipu-acpi-pdata.h>
 #include <media/ipu-acpi.h>
 #include <media/ipu-get-acpi.h>
-
-#if IS_ENABLED(CONFIG_VIDEO_ISX031)
-#include <media/i2c/isx031.h>
-#endif
 
 static LIST_HEAD(devices);
 
@@ -80,31 +76,8 @@ static const struct ipu_acpi_devices supported_devices[] = {
 
 #if IS_ENABLED(CONFIG_VIDEO_MAX9X)
 #if IS_ENABLED(CONFIG_VIDEO_ISX031)
-	{
-		.hid_name = "INTC031M",
-		.real_driver = ISX031_NAME,
-		.get_platform_data = get_sensor_pdata,
-		.priv_data = NULL,
-		.priv_size = 0,
-		.connect = TYPE_SERDES,
-		.serdes_name = "max9x",
-		.sensor_physical_addr = ISX031_I2C_ADDRESS,
-		.link_freq = 1600,
-		.ser_physical_addr = 0x40,
-		.ser_gpio = {
-			{
-				.chip_hwnum = 0,
-				.con_id = "reset",
-				.flags = GPIO_ACTIVE_LOW,
-			},
-			{
-				.chip_hwnum = 7,
-				.con_id = "fsin",
-				.flags = GPIO_ACTIVE_LOW,
-			},
-		},
-		.sensor_dt = MIPI_CSI2_TYPE_YUV422_8,
-	},	// ISX031 HID
+	{ "INTC031M", ISX031_NAME, get_sensor_pdata, NULL, 0, TYPE_SERDES, "max9x",
+		ISX031_I2C_ADDRESS, 1600 },	// D3 ISX031 HID
 #endif
 #endif
 };
@@ -180,10 +153,7 @@ static int ipu_acpi_get_pdata(struct device *dev, int index)
 		supported_devices[index].serdes_name,
 		supported_devices[index].hid_name,
 		supported_devices[index].sensor_physical_addr,
-		supported_devices[index].link_freq,
-		supported_devices[index].ser_physical_addr,
-		supported_devices[index].ser_gpio,
-		supported_devices[index].sensor_dt);
+		supported_devices[index].link_freq);
 
 	if (rval)
 		return -EPROBE_DEFER;
