@@ -9,6 +9,7 @@
 #include <linux/list.h>
 #include <linux/pci.h>
 #include <linux/types.h>
+#include <linux/version.h>
 
 #include "ipu7-buttress.h"
 
@@ -81,7 +82,7 @@ struct ipu7_device {
 
 	void __iomem *base;
 	void __iomem *pb_base;
-#ifdef CONFIG_DEBUG_FS
+#if defined(CONFIG_DEBUG_FS) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 17, 0)
 	struct dentry *ipu7_dir;
 #endif
 	u8 hw_ver;

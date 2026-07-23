@@ -1351,7 +1351,11 @@ static int ipu7_psys_init_debugfs(struct ipu7_psys *psys)
 	struct dentry *file;
 	struct dentry *dir;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 17, 0)
 	dir = debugfs_create_dir("psys", psys->adev->isp->ipu7_dir);
+#else
+	dir = debugfs_create_dir("ipu7-psys", NULL);
+#endif
 	if (IS_ERR(dir))
 		return -ENOMEM;
 
@@ -1502,9 +1506,7 @@ static void ipu7_psys_remove(struct auxiliary_device *auxdev)
 
 	psys->adev->get_running_fw_task_count = NULL;
 #ifdef CONFIG_DEBUG_FS
-	struct ipu7_device *isp = psys->adev->isp;
-
-	if (isp->ipu7_dir)
+	if (psys->debugfsdir)
 		debugfs_remove_recursive(psys->debugfsdir);
 #endif
 
