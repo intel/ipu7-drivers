@@ -2753,6 +2753,7 @@ static void ipu7_pci_remove(struct pci_dev *pdev)
 	ipu_buttress_exit(isp);
 
 	release_firmware(isp->cpd_fw);
+
 }
 
 static void ipu7_pci_reset_prepare(struct pci_dev *pdev)
@@ -2783,6 +2784,10 @@ static void ipu7_pci_reset_done(struct pci_dev *pdev)
  */
 static int ipu7_suspend(struct device *dev)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
+
+	synchronize_irq(pdev->irq);
+
 	return 0;
 }
 

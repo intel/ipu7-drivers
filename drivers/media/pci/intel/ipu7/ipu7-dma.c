@@ -219,9 +219,6 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
 		}
 	}
 
-	if (mmu->mmid == ISYS_MMID)
-		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
-
 	info->vaddr = vmap(pages, count, VM_USERMAP, PAGE_KERNEL);
 	if (!info->vaddr)
 		goto out_unmap;
@@ -266,16 +263,12 @@ void ipu7_dma_free(struct ipu7_bus_device *sys, size_t size, void *vaddr,
 {
 	struct ipu7_mmu *mmu = sys->mmu;
 	struct pci_dev *pdev = sys->isp->pdev;
-	struct iova *iova;
+	struct iova *iova = find_iova(&mmu->dmap->iovad, PHYS_PFN(dma_handle));
 	dma_addr_t pci_dma_addr, ipu7_iova;
 	struct vm_info *info;
 	struct page **pages;
 	unsigned int i;
 
-	if (!mmu || !mmu->dmap)
-		return;
-
-	iova = find_iova(&mmu->dmap->iovad, PHYS_PFN(dma_handle));
 	if (WARN_ON(!iova))
 		return;
 
@@ -310,7 +303,7 @@ void ipu7_dma_free(struct ipu7_bus_device *sys, size_t size, void *vaddr,
 
 	__free_buffer(pages, size, attrs);
 
-	mmu->tlb_invalidate(mmu, -1);
+	mmu->tlb_invalidate(mmu);
 
 	__free_iova(&mmu->dmap->iovad, iova);
 
@@ -361,7 +354,8 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 {
 	struct device *dev = &sys->auxdev.dev;
 	struct ipu7_mmu *mmu = sys->mmu;
-	struct iova *iova;
+	struct iova *iova = find_iova(&mmu->dmap->iovad,
+				      PHYS_PFN(sg_dma_address(sglist)));
 	struct scatterlist *sg;
 	dma_addr_t pci_dma_addr;
 	unsigned int i;
@@ -369,10 +363,6 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 	if (!nents)
 		return;
 
-	if (!mmu || !mmu->dmap)
-		return;
-
-	iova = find_iova(&mmu->dmap->iovad, PHYS_PFN(sg_dma_address(sglist)));
 	if (WARN_ON(!iova))
 		return;
 
@@ -397,9 +387,7 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 	ipu7_mmu_unmap(mmu->dmap->mmu_info, PFN_PHYS(iova->pfn_lo),
 		       PFN_PHYS(iova_size(iova)));
 
-	mutex_lock(&sys->acquire_fw_task_buffer_lock);
-	mmu->tlb_invalidate(mmu, -1);
-	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
+	mmu->tlb_invalidate(mmu);
 	__free_iova(&mmu->dmap->iovad, iova);
 }
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)

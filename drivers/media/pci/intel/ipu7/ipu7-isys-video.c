@@ -91,6 +91,25 @@ const struct ipu7_isys_pixelformat ipu7_isys_pfmts[] = {
 	 IPU_INSYS_FRAME_FORMAT_RGBA888},
 };
 
+static int video_open(struct file *file)
+{
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+	struct ipu7_isys_video *av = video_drvdata(file);
+	struct ipu7_isys *isys = av->isys;
+	struct ipu7_bus_device *adev = isys->adev;
+
+	mutex_lock(&isys->reset_mutex);
+	if (isys->need_reset) {
+		mutex_unlock(&isys->reset_mutex);
+		dev_warn(&adev->auxdev.dev, "isys power cycle required\n");
+		return -EIO;
+	}
+	mutex_unlock(&isys->reset_mutex);
+
+#endif
+	return v4l2_fh_open(file);
+}
+
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 static int video_release(struct file *file)
 {
@@ -436,12 +455,15 @@ static int ipu7_isys_fw_pin_cfg(struct ipu7_isys_video *av,
 	/* output pin crop */
 	output_pin->crop.line_top = 0;
 	output_pin->crop.line_bottom = 0;
+#ifdef IPU8_INSYS_NEW_ABI
 	output_pin->crop.column_left = 0;
 	output_pin->crop.column_right = 0;
+#endif
 
 	/* output de-compression */
 	output_pin->dpcm.enable = 0;
 
+#ifdef IPU8_INSYS_NEW_ABI
 	/* upipe_cfg */
 	output_pin->upipe_pin_cfg.opaque_pin_cfg = 0;
 	output_pin->upipe_pin_cfg.plane_offset_1 = 0;
@@ -452,6 +474,7 @@ static int ipu7_isys_fw_pin_cfg(struct ipu7_isys_video *av,
 	output_pin->binning_factor = 0;
 	/* stupid setting, even unused, SW still need to set a valid value */
 	output_pin->cfa_dim = IPU_INSYS_CFA_DIM_2x2;
+#endif
 
 	/* frame format type */
 	pfmt = ipu7_isys_get_isys_format(av->pix_fmt.pixelformat);
@@ -487,8 +510,6 @@ static int start_stream_firmware(struct ipu7_isys_video *av,
 	msg = ipu7_get_fw_msg_buf(stream);
 	if (!msg)
 		return -ENOMEM;
-
-	msg->stream_id = stream->stream_handle;
 
 	stream_cfg = &msg->fw_msg.stream;
 	stream_cfg->port_id = stream->stream_source;
@@ -546,7 +567,6 @@ static int start_stream_firmware(struct ipu7_isys_video *av,
 		ret = -ENOMEM;
 		goto out_put_stream_opened;
 	}
-	msg->stream_id = stream->stream_handle;
 	buf = &msg->fw_msg.frame;
 
 	ipu7_isys_buffer_to_fw_frame_buff(buf, stream, bl);
@@ -846,7 +866,6 @@ int ipu7_isys_video_set_streaming(struct ipu7_isys_video *av, int state,
 	struct media_pad *r_pad;
 	struct v4l2_subdev *sd;
 	u32 r_stream = 0;
-	u16 stream_id = stream->stream_handle;
 	int ret = 0;
 
 	dev_dbg(dev, "set stream: %d\n", state);
@@ -871,7 +890,6 @@ int ipu7_isys_video_set_streaming(struct ipu7_isys_video *av, int state,
 		}
 
 		close_streaming_firmware(av);
-		ipu7_cleanup_fw_msg_bufs_by_stream_id(av->isys, stream_id);
 	} else {
 		ret = start_stream_firmware(av, bl);
 		if (ret) {
@@ -928,7 +946,7 @@ static const struct v4l2_file_operations isys_fops = {
 	.poll = vb2_fop_poll,
 	.unlocked_ioctl = video_ioctl2,
 	.mmap = vb2_fop_mmap,
-	.open = v4l2_fh_open,
+	.open = video_open,
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	.release = video_release,
 #else
@@ -975,12 +993,19 @@ out:
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 void ipu7_isys_fw_close(struct ipu7_isys *isys)
 {
+	int ret = 0;
+
 	mutex_lock(&isys->mutex);
-
 	isys->ref_count--;
-
-	if (!isys->ref_count)
-		ipu7_fw_isys_close(isys);
+	if (!isys->ref_count) {
+		/* need reset when fw close is abnormal */
+		ret = ipu7_fw_isys_close(isys);
+		if (ret) {
+			mutex_lock(&isys->reset_mutex);
+			isys->need_reset = true;
+			mutex_unlock(&isys->reset_mutex);
+		}
+	}
 
 	mutex_unlock(&isys->mutex);
 
@@ -1141,13 +1166,13 @@ int ipu7_isys_video_init(struct ipu7_isys_video *av)
 
 	__ipu_isys_vidioc_try_fmt_vid_cap(av, &format);
 	av->pix_fmt = format.fmt.pix;
-
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	av->reset = false;
 	av->skipframe = 0;
 	av->start_streaming = 0;
 #endif
 
+	set_bit(V4L2_FL_USES_V4L2_FH, &av->vdev.flags);
 	video_set_drvdata(&av->vdev, av);
 
 	ret = video_register_device(&av->vdev, VFL_TYPE_VIDEO, -1);
