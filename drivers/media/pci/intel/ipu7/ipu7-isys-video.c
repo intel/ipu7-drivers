@@ -864,9 +864,24 @@ int ipu7_isys_video_set_streaming(struct ipu7_isys_video *av, int state,
 			sd->name, r_pad->index, BIT_ULL(r_stream));
 		ret = v4l2_subdev_disable_streams(sd, r_pad->index,
 						  BIT_ULL(r_stream));
-		if (ret) {
+		if (ret == -EALREADY) {
+			/*
+			 * Benign race when a sibling VC sharing the same
+			 * CSI2 receiver has already dropped the link
+			 * refcount. Continue teardown so the firmware is
+			 * closed and VB2 buffers are released.
+			 */
+			dev_dbg(dev, "disable streams %s already done, continuing teardown\n",
+				sd->name);
+			ret = 0;
+		} else if (ret) {
 			dev_err(dev, "disable streams %s failed with %d\n",
 				sd->name, ret);
+			/*
+			 * Still close the firmware to keep its state in sync
+			 * with the queue state, but propagate the error.
+			 */
+			close_streaming_firmware(av);
 			return ret;
 		}
 
