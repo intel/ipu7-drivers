@@ -12,6 +12,8 @@
  * GNU General Public License for more details.
  *
  */
+
+#include <linux/version.h>
 #include <linux/platform_device.h>
 #include <linux/pci.h>
 #include <linux/gpio/consumer.h>
