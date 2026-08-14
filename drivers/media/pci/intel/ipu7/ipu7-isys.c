@@ -103,6 +103,22 @@ struct isys_i2c_test {
 	struct i2c_client *client;
 };
 
+static struct fwnode_handle *
+isys_get_fwnode_endpoint_by_id(struct fwnode_handle *fwnode, unsigned int port)
+{
+	struct fwnode_handle *ep;
+
+	if (IS_ERR_OR_NULL(fwnode))
+		return NULL;
+
+	ep = fwnode_graph_get_endpoint_by_id(fwnode, port, 0,
+					     FWNODE_GRAPH_ENDPOINT_NEXT);
+	if (ep)
+		return ep;
+
+	return isys_get_fwnode_endpoint_by_id(fwnode->secondary, port);
+}
+
 static int isys_i2c_test(struct device *dev, void *priv)
 {
 	struct i2c_client *client = i2c_verify_client(dev);
@@ -191,6 +207,10 @@ static int isys_register_ext_subdev(struct ipu7_isys *isys,
 		ret = -EINVAL;
 		goto skip_put_adapter;
 	}
+
+	/* Platform-data subdevs are linked manually and may not have fwnodes. */
+	if (IS_ERR_OR_NULL(sd->fwnode))
+		v4l2_async_unregister_subdev(sd);
 
 	if (!sd_info->csi2)
 		return 0;
@@ -323,8 +343,7 @@ static int isys_notifier_init(struct ipu7_isys *isys)
 		struct sensor_async_sd *s_asd;
 		struct fwnode_handle *ep;
 
-		ep = fwnode_graph_get_endpoint_by_id(dev_fwnode(dev), i, 0,
-						     FWNODE_GRAPH_ENDPOINT_NEXT);
+		ep = isys_get_fwnode_endpoint_by_id(dev_fwnode(dev), i);
 		if (!ep)
 			continue;
 
@@ -572,12 +591,15 @@ static int isys_register_devices(struct ipu7_isys *isys)
 	if (ret)
 		goto out_csi2_unregister_subdevices;
 
-	if (!isys->pdata->spdata) {
-		ret = isys_notifier_init(isys);
-		if (ret)
-			goto out_csi2_unregister_subdevices;
-	} else {
+	if (isys->pdata->spdata)
 		isys_register_ext_subdevs(isys);
+
+	ret = isys_notifier_init(isys);
+	if (ret)
+		goto out_csi2_unregister_subdevices;
+
+	if (!isys->pdata->spdata ||
+	    list_empty(&isys->notifier.waiting_list)) {
 		ret = v4l2_device_register_subdev_nodes(&isys->v4l2_dev);
 		if (ret)
 			goto out_csi2_unregister_subdevices;
@@ -832,8 +854,7 @@ static void isys_remove(struct auxiliary_device *auxdev)
 		ipu7_dma_free(adev, sizeof(struct isys_fw_msgs),
 			      fwmsg, fwmsg->dma_addr, 0);
 
-	if (!isys->pdata->spdata)
-		isys_notifier_cleanup(isys);
+	isys_notifier_cleanup(isys);
 
 	isys_unregister_devices(isys);
 
