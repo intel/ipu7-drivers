@@ -1249,16 +1249,7 @@ static int psys_resume(struct device *dev)
 
 static int psys_suspend(struct device *dev)
 {
-	struct ipu7_psys *psys = dev_get_drvdata(dev);
-	unsigned long flags;
-	int ret = 0;
-
-	spin_lock_irqsave(&psys->ready_lock, flags);
-	if (psys->ready)
-		ret = -EBUSY;
-	spin_unlock_irqrestore(&psys->ready_lock, flags);
-
-	return ret;
+	return psys_runtime_pm_suspend(dev);
 }
 
 static const struct dev_pm_ops psys_pm_ops = {
