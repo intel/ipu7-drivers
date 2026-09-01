@@ -23,6 +23,7 @@
 
 #include "abi/ipu7_fw_isys_abi.h"
 
+#include "ipu7.h"
 #include "ipu7-bus.h"
 #include "ipu7-dma.h"
 #include "ipu7-fw-isys.h"
@@ -264,15 +265,12 @@ static void ipu7_isys_buf_to_fw_frame_buf_pin(struct vb2_buffer *vb,
 	struct vb2_v4l2_buffer *vvb = to_vb2_v4l2_buffer(vb);
 	struct ipu7_isys_video_buffer *ivb =
 		vb2_buffer_to_ipu7_isys_video_buffer(vvb);
+	struct ipu7_isys_video *av = ipu7_isys_queue_to_video(aq);
 
-#ifndef IPU8_INSYS_NEW_ABI
-	set->output_pins[aq->fw_output].addr = ivb->dma_addr;
-	set->output_pins[aq->fw_output].user_token = (uintptr_t)set;
-#else
 	set->output_pins[aq->fw_output].pin_payload.addr = ivb->dma_addr;
 	set->output_pins[aq->fw_output].pin_payload.user_token = (uintptr_t)set;
-	set->output_pins[aq->fw_output].upipe_capture_cfg = 0;
-#endif
+	if (is_ipu8(av->isys->adev->isp->hw_ver))
+		set->output_pins[aq->fw_output].upipe_capture_cfg = 0;
 }
 
 /*
