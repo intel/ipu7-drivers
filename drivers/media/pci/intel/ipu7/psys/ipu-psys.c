@@ -1309,8 +1309,11 @@ static int ipu7_psys_init_debugfs(struct ipu7_psys *psys)
 {
 	struct dentry *file;
 	struct dentry *dir;
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 17, 0)
 	dir = debugfs_create_dir("psys", psys->adev->isp->ipu7_dir);
+#else
+	dir = debugfs_create_dir("ipu7-psys", NULL);
+#endif
 	if (IS_ERR(dir))
 		return -ENOMEM;
 
@@ -1457,9 +1460,7 @@ static void ipu7_psys_remove(struct auxiliary_device *auxdev)
 	struct ipu7_psys *psys = dev_get_drvdata(&auxdev->dev);
 	struct device *dev = &auxdev->dev;
 #ifdef CONFIG_DEBUG_FS
-	struct ipu7_device *isp = psys->adev->isp;
-
-	if (isp->ipu7_dir)
+	if (psys->debugfsdir)
 		debugfs_remove_recursive(psys->debugfsdir);
 #endif
 
@@ -1539,7 +1540,28 @@ static struct auxiliary_driver ipu7_psys_driver = {
 	},
 };
 
-module_auxiliary_driver(ipu7_psys_driver);
+static int __init ipu7_psys_init(void)
+{
+	int ret;
+
+	ret = bus_register(&ipu7_psys_bus);
+	if (ret)
+		return ret;
+
+	ret = auxiliary_driver_register(&ipu7_psys_driver);
+	if (ret)
+		bus_unregister(&ipu7_psys_bus);
+
+	return ret;
+}
+module_init(ipu7_psys_init);
+
+static void __exit ipu7_psys_exit(void)
+{
+	auxiliary_driver_unregister(&ipu7_psys_driver);
+	bus_unregister(&ipu7_psys_bus);
+}
+module_exit(ipu7_psys_exit);
 
 MODULE_AUTHOR("Bingbu Cao <bingbu.cao@intel.com>");
 MODULE_AUTHOR("Qingwu Zhang <qingwu.zhang@intel.com>");
