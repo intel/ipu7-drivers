@@ -748,6 +748,13 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 	if (is_ipu7(isys->adev->isp->hw_ver))
 		trios = 3;
 
+	/*
+	 * An aggregated port A+B is a single 5-pair macro carrying 3 trios:
+	 * port A's three pairs hold trios 0-1, port B's two hold trio 2.
+	 */
+	if (aggregation && id != PORT_A)
+		trios = 1;
+
 	dwc_phy_write_mask(isys, id, CORE_DIG_RW_COMMON_7, val, 0, 9);
 	dwc_phy_write_mask(isys, id, PPI_STARTUP_RW_COMMON_DPHY_7, 104, 0, 7);
 	dwc_phy_write_mask(isys, id, PPI_STARTUP_RW_COMMON_DPHY_8, 16, 0, 7);
@@ -872,6 +879,27 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 
 		reg = CORE_DIG_IOCTRL_RW_AFE_LANE0_CTRL_2_7 + 0x400 * i;
 		dwc_phy_write_mask(isys, id, reg, cap_prog, 10, 12);
+	}
+
+	if (aggregation) {
+		dwc_phy_write_mask(isys, id, CORE_DIG_RW_COMMON_0, 1, 1, 1);
+
+		/*
+		 * C-PHY has no clock lane, so unlike D-PHY no AFE lane is the
+		 * shared clock that has to follow port A.
+		 */
+		for (i = 0; i < (lanes + 1); i++) {
+			reg = CORE_DIG_IOCTRL_RW_AFE_LANE0_CTRL_2_15 + 0x400 * i;
+			dwc_phy_write_mask(isys, id, reg, 3, 3, 4);
+		}
+	}
+
+	/* Only port A runs rext calibration; other ports reuse its result. */
+	if (isys->phy_rext_cal && id) {
+		dwc_phy_write_mask(isys, id, CORE_DIG_IOCTRL_RW_AFE_CB_CTRL_2_8,
+				   isys->phy_rext_cal, 0, 3);
+		dwc_phy_write_mask(isys, id, CORE_DIG_IOCTRL_RW_AFE_CB_CTRL_2_7,
+				   1, 11, 11);
 	}
 }
 
