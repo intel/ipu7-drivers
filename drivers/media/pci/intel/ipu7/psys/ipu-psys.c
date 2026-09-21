@@ -792,6 +792,9 @@ kbuf_map_fail:
 	dma_buf_detach(kbuf->dbuf, kbuf->db_attach);
 
 attach_fail:
+	kbuf->db_attach = NULL;
+	kbuf->sgt = NULL;
+	kbuf->dbuf = NULL;
 	list_del(&kbuf->list);
 	if (!kbuf->userptr)
 		kfree(kbuf);
