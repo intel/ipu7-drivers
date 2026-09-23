@@ -1,0 +1,33 @@
+From 3b95cec7003ffcf9b7ba7a7e64314bde2f986b2f Mon Sep 17 00:00:00 2001
+From: hepengpx <pengpengx.he@intel.com>
+Date: Mon, 5 Jan 2026 16:15:49 +0800
+Subject: [PATCH 24/26] media: ipu7: call synchronous RPM suspend in probe
+ failure
+
+If firmware authentication failed during driver probe, driver call
+an asynchronous API to suspend the psys device but the bus device
+will be removed soon, thus runtime PM of bus device will be disabled
+soon, that will cancel the suspend request, so use synchronous
+suspend to make sure the runtime suspend before disabling its RPM.
+
+IPU7 hardware has constraints that the PSYS device must be powered
+off before ISYS, otherwise it will cause machine check error.
+
+Signed-off-by: Bingbu Cao <bingbu.cao@intel.com>
+---
+ drivers/staging/media/ipu7/ipu7.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7.c b/drivers/staging/media/ipu7/ipu7.c
+index 9307fd6e52..f47a78e7ae 100644
+--- a/drivers/staging/media/ipu7/ipu7.c
++++ b/drivers/staging/media/ipu7/ipu7.c
+@@ -2690,7 +2690,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+ 	if (!IS_ERR_OR_NULL(isp->isys) && !IS_ERR_OR_NULL(isp->isys->mmu))
+ 		ipu7_mmu_cleanup(isp->isys->mmu);
+ 	if (!IS_ERR_OR_NULL(isp->psys))
+-		pm_runtime_put(&isp->psys->auxdev.dev);
++		pm_runtime_put_sync(&isp->psys->auxdev.dev);
+ 	ipu7_bus_del_devices(pdev);
+ 	release_firmware(isp->cpd_fw);
+ buttress_exit:
