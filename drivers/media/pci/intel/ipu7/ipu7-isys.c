@@ -1344,14 +1344,17 @@ int isys_isr_one(struct ipu7_bus_device *adev)
 	if (err_info.err_group == INSYS_MSG_ERR_GROUP_CAPTURE &&
 	    err_info.err_code == INSYS_MSG_ERR_CAPTURE_SYNC_FRAME_DROP) {
 		/* receive a sp w/o command, firmware drop it */
-		dev_dbg(dev, "FRAME DROP: %02u %s stream %u\n",
-			resp->type, is_fw_msg[resp->type].msg,
-			resp->stream_id);
-		dev_dbg(dev, "\tpin %u buf_id %llx frame %u\n",
-			resp->pin_id, resp->buf_id, resp->frame_id);
-		dev_dbg(dev, "\terror group %u code %u details [%u %u]\n",
-			err_info.err_group, err_info.err_code,
-			err_info.err_detail[0], err_info.err_detail[1]);
+		dev_warn_ratelimited(dev, "FRAME DROP: %02u %s stream %u\n",
+				     resp->type, is_fw_msg[resp->type].msg,
+				     resp->stream_id);
+		dev_warn_ratelimited(dev, "\tpin %u buf_id %llx frame %u\n",
+				     resp->pin_id, resp->buf_id,
+				     resp->frame_id);
+		dev_warn_ratelimited(dev,
+				     "\terror group %u code %u details [%u %u]\n",
+				     err_info.err_group, err_info.err_code,
+				     err_info.err_detail[0],
+				     err_info.err_detail[1]);
 	} else if (!IA_GOFO_MSG_ERR_IS_OK(err_info)) {
 		dev_err(dev, "%02u %s stream %u pin %u buf_id %llx frame %u\n",
 			resp->type, is_fw_msg[resp->type].msg, resp->stream_id,
