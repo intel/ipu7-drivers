@@ -715,22 +715,42 @@ int ipu_buttress_powerup(struct device *dev,
 			 const struct ipu_buttress_ctrl *ctrl)
 {
 	struct ipu7_device *isp = to_ipu7_bus_device(dev)->isp;
+	int ret;
 
 	if (is_ipu8(isp->hw_ver))
-		return ipu8_buttress_powerup(dev, ctrl);
+		ret = ipu8_buttress_powerup(dev, ctrl);
+	else
+		ret = ipu7_buttress_powerup(dev, ctrl);
 
-	return ipu7_buttress_powerup(dev, ctrl);
+	if (!ret && ctrl) {
+		u32 status = readl(isp->base + BUTTRESS_REG_PWR_STATUS);
+
+		dev_info(dev, "power UP %s sub-domains. status: 0x%x\n",
+			 ctrl->subsys_id == IPU_IS ? "isys" : "psys", status);
+	}
+
+	return ret;
 }
 
 int ipu_buttress_powerdown(struct device *dev,
 			   const struct ipu_buttress_ctrl *ctrl)
 {
 	struct ipu7_device *isp = to_ipu7_bus_device(dev)->isp;
+	int ret;
 
 	if (is_ipu8(isp->hw_ver))
-		return ipu8_buttress_powerdown(dev, ctrl);
+		ret = ipu8_buttress_powerdown(dev, ctrl);
+	else
+		ret = ipu7_buttress_powerdown(dev, ctrl);
 
-	return ipu7_buttress_powerdown(dev, ctrl);
+	if (!ret && ctrl) {
+		u32 status = readl(isp->base + BUTTRESS_REG_PWR_STATUS);
+
+		dev_info(dev, "power DOWN %s sub-domains. status: 0x%x\n",
+			 ctrl->subsys_id == IPU_IS ? "isys" : "psys", status);
+	}
+
+	return ret;
 }
 
 bool ipu_buttress_get_secure_mode(struct ipu7_device *isp)
