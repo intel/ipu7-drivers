@@ -1006,8 +1006,13 @@ void ipu7_isys_fw_close(struct ipu7_isys *isys)
 	 * every close, ignoring autosuspend, so S2B/B2O return to POR state
 	 * even if STREAM_FLUSH/STREAM_CLOSE did not complete cleanly.
 	 */
-	dev_info(&isys->adev->auxdev.dev, "pm_runtime_put_sync_suspend\n");
-	pm_runtime_put_sync_suspend(&isys->adev->auxdev.dev);
+	{
+		struct device *dev = &isys->adev->auxdev.dev;
+		int ret = pm_runtime_put_sync_suspend(dev);
+
+		dev_info(dev, "pm_runtime_put_sync_suspend returned %d (usage_count: %d)\n",
+			 ret, atomic_read(&dev->power.usage_count));
+	}
 }
 #endif
 
