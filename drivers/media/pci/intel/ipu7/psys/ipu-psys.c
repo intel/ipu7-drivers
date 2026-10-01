@@ -557,7 +557,13 @@ static int ipu7_psys_release(struct inode *inode, struct file *file)
 	mutex_destroy(&fh->mutex);
 	kfree(fh);
 
-	pm_runtime_put_sync(&psys->adev->auxdev.dev);
+	{
+		struct device *dev = &psys->adev->auxdev.dev;
+		int ret = pm_runtime_put_sync(dev);
+
+		dev_info(dev, "pm_runtime_put_sync returned %d (usage_count: %d)\n",
+			 ret, atomic_read(&dev->power.usage_count));
+	}
 
 	return 0;
 }
