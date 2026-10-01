@@ -857,19 +857,16 @@ int ipu7_isys_video_set_streaming(struct ipu7_isys_video *av, int state,
 	sd = &stream->asd->sd;
 	r_pad = media_pad_remote_pad_first(&av->pad);
 	if (!state) {
-		stop_streaming_firmware(av);
-
-		/* stop sub-device which connects with video */
+		/* stop sensor first so no new frame cmds race the FW abort */
 		dev_dbg(dev, "disable streams %s pad:%d mask:0x%llx\n",
 			sd->name, r_pad->index, BIT_ULL(r_stream));
 		ret = v4l2_subdev_disable_streams(sd, r_pad->index,
 						  BIT_ULL(r_stream));
-		if (ret) {
+		if (ret)
 			dev_err(dev, "disable streams %s failed with %d\n",
 				sd->name, ret);
-			return ret;
-		}
 
+		stop_streaming_firmware(av);
 		close_streaming_firmware(av);
 		ipu7_cleanup_fw_msg_bufs_by_stream_id(av->isys, stream_id);
 	} else {
@@ -1004,7 +1001,18 @@ void ipu7_isys_fw_close(struct ipu7_isys *isys)
 		ipu7_fw_isys_close(isys);
 
 	mutex_unlock(&isys->mutex);
-	pm_runtime_put(&isys->adev->auxdev.dev);
+	/*
+	 * Force an immediate synchronous power-cycle of the IS island on
+	 * every close, ignoring autosuspend, so S2B/B2O return to POR state
+	 * even if STREAM_FLUSH/STREAM_CLOSE did not complete cleanly.
+	 */
+	{
+		struct device *dev = &isys->adev->auxdev.dev;
+		int ret = pm_runtime_put_sync_suspend(dev);
+
+		dev_info(dev, "pm_runtime_put_sync_suspend returned %d (usage_count: %d)\n",
+			 ret, atomic_read(&dev->power.usage_count));
+	}
 }
 #endif
 
