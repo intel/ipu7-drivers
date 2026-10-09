@@ -1,0 +1,57 @@
+From 25ffc40c96dd9872cb8b36c00e91fb0ea0e9ad3d Mon Sep 17 00:00:00 2001
+From: hepengpx <pengpengx.he@intel.com>
+Date: Mon, 5 Jan 2026 16:37:22 +0800
+Subject: [PATCH 25/26] media: ipu7: ignore interrupts when device is suspended
+
+IPU7 devices have shared interrupts with others. In some case when
+IPU7 device is suspended, driver get unexpected interrupt and invalid
+irq status 0xffffffff from ISR_STATUS and PB LOCAL_STATUS
+registers as interrupt is triggered from other device on shared
+irq line.
+
+In order to avoid this issue use pm_runtime_get_if_active() to check
+if IPU7 device is resumed, ignore the invalid irq status and use
+synchronize_irq() in suspend.
+
+Signed-off-by: Bingbu Cao <bingbu.cao@intel.com>
+---
+ drivers/staging/media/ipu7/ipu7-buttress.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7-buttress.c b/drivers/staging/media/ipu7/ipu7-buttress.c
+index e5707f5e30..e4328cafe9 100644
+--- a/drivers/staging/media/ipu7/ipu7-buttress.c
++++ b/drivers/staging/media/ipu7/ipu7-buttress.c
+@@ -342,14 +342,22 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
+ 	u32 disable_irqs = 0;
+ 	u32 irq_status;
+ 	unsigned int i;
++	int active;
+
+-	pm_runtime_get_noresume(dev);
++	active = pm_runtime_get_if_active(dev);
++	if (active <= 0)
++		return IRQ_NONE;
+
+ 	pb_irq = readl(isp->pb_base + INTERRUPT_STATUS);
+ 	writel(pb_irq, isp->pb_base + INTERRUPT_STATUS);
+
+ 	/* check btrs ATS, CFI and IMR errors, BIT(0) is unused for IPU */
+ 	pb_local_irq = readl(isp->pb_base + BTRS_LOCAL_INTERRUPT_MASK);
++	if (WARN_ON_ONCE(pb_local_irq == 0xffffffff)) {
++		pm_runtime_put_noidle(dev);
++		return IRQ_NONE;
++	}
++
+ 	if (pb_local_irq & ~BIT(0)) {
+ 		dev_warn(dev, "PB interrupt status 0x%x local 0x%x\n", pb_irq,
+ 			 pb_local_irq);
+@@ -365,7 +373,7 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
+ 	}
+
+ 	irq_status = readl(isp->base + BUTTRESS_REG_IRQ_STATUS);
+-	if (!irq_status) {
++	if (!irq_status || WARN_ON_ONCE(irq_status == 0xffffffff)) {
+ 		pm_runtime_put_noidle(dev);
+ 		return IRQ_NONE;
+ 	}
