@@ -1,7 +1,7 @@
-From 7c226ce24f27e00ab45f31881b6e48a9e2bc3d00 Mon Sep 17 00:00:00 2001
-From: hepengpx <pengpengx.he@intel.com>
-Date: Wed, 17 Jun 2026 10:13:25 +0800
-Subject: [PATCH 01/26] ipu7: Wait ipu fw requests to clear
+From 6d7d8697365c88fc94c07799932f982d638b1e5a Mon Sep 17 00:00:00 2001
+From: Pengpeng He <pengpengx.he@intel.com>
+Date: Sat, 10 Oct 2026 19:28:28 +0800
+Subject: [PATCH] ipu7: Wait ipu fw requests to clear
 
 IPU ISYS MMUs run in parallel, and runtime TLB invalidation may
 overlap with ongoing data movement. For fw msg buf expansion,
@@ -19,14 +19,14 @@ Signed-off-by: hepengpx <pengpengx.he@intel.com>
 ---
  drivers/staging/media/ipu7/ipu7-bus.c  |  2 +
  drivers/staging/media/ipu7/ipu7-bus.h  |  6 +++
- drivers/staging/media/ipu7/ipu7-dma.c  |  8 +++-
+ drivers/staging/media/ipu7/ipu7-dma.c  | 26 +++++++++++--
  drivers/staging/media/ipu7/ipu7-isys.c | 30 ++++++++++++++-
  drivers/staging/media/ipu7/ipu7-mmu.c  | 52 +++++++++++++++++++++++++-
  drivers/staging/media/ipu7/ipu7-mmu.h  |  8 +++-
- 6 files changed, 99 insertions(+), 7 deletions(-)
+ 6 files changed, 116 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/staging/media/ipu7/ipu7-bus.c b/drivers/staging/media/ipu7/ipu7-bus.c
-index 7da44fde00..cd0641781c 100644
+index 7da44fde002a..cd0641781c74 100644
 --- a/drivers/staging/media/ipu7/ipu7-bus.c
 +++ b/drivers/staging/media/ipu7/ipu7-bus.c
 @@ -75,6 +75,7 @@ static void ipu7_bus_release(struct device *dev)
@@ -46,7 +46,7 @@ index 7da44fde00..cd0641781c 100644
  	auxdev->name = name;
  	auxdev->id = (pci_domain_nr(pdev->bus) << 16) |
 diff --git a/drivers/staging/media/ipu7/ipu7-bus.h b/drivers/staging/media/ipu7/ipu7-bus.h
-index 45157df16e..eb9d0c907d 100644
+index 45157df16e90..eb9d0c907ddc 100644
 --- a/drivers/staging/media/ipu7/ipu7-bus.h
 +++ b/drivers/staging/media/ipu7/ipu7-bus.h
 @@ -46,6 +46,12 @@ struct ipu7_bus_device {
@@ -63,40 +63,65 @@ index 45157df16e..eb9d0c907d 100644
 
  struct ipu7_auxdrv_data {
 diff --git a/drivers/staging/media/ipu7/ipu7-dma.c b/drivers/staging/media/ipu7/ipu7-dma.c
-index a118b41b2f..05478ab0f0 100644
+index a118b41b2f34..b407689fb2fe 100644
 --- a/drivers/staging/media/ipu7/ipu7-dma.c
 +++ b/drivers/staging/media/ipu7/ipu7-dma.c
-@@ -206,6 +206,8 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
+@@ -206,6 +206,10 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
  		}
  	}
 
 +	if (mmu->mmid == ISYS_MMID)
 +		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
++	else
++		mmu->tlb_invalidate(mmu, -1);
  	info->vaddr = vmap(pages, count, VM_USERMAP, PAGE_KERNEL);
  	if (!info->vaddr)
  		goto out_unmap;
-@@ -286,7 +288,7 @@ void ipu7_dma_free(struct ipu7_bus_device *sys, size_t size, void *vaddr,
+@@ -286,8 +290,12 @@ void ipu7_dma_free(struct ipu7_bus_device *sys, size_t size, void *vaddr,
 
  	__free_buffer(pages, size, attrs);
 
 -	mmu->tlb_invalidate(mmu);
-+	mmu->tlb_invalidate(mmu, -1);
-
+-
++	mutex_lock(&sys->acquire_fw_task_buffer_lock);
++	if (mmu->mmid == ISYS_MMID)
++		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
++	else
++		mmu->tlb_invalidate(mmu, -1);
++	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
  	__free_iova(&mmu->dmap->iovad, iova);
 
-@@ -366,7 +368,9 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
+ 	kfree(info);
+@@ -366,7 +374,12 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
  	ipu7_mmu_unmap(mmu->dmap->mmu_info, PFN_PHYS(iova->pfn_lo),
  		       PFN_PHYS(iova_size(iova)));
 
 -	mmu->tlb_invalidate(mmu);
 +	mutex_lock(&sys->acquire_fw_task_buffer_lock);
-+	mmu->tlb_invalidate(mmu, -1);
++	if (mmu->mmid == ISYS_MMID)
++		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
++	else
++		mmu->tlb_invalidate(mmu, -1);
 +	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
  	__free_iova(&mmu->dmap->iovad, iova);
  }
  EXPORT_SYMBOL_NS_GPL(ipu7_dma_unmap_sg, "INTEL_IPU7");
+@@ -443,6 +456,13 @@ int ipu7_dma_map_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
+ 		iova_addr += PFN_UP(sg_dma_len(sg));
+ 	}
+
++	mutex_lock(&sys->acquire_fw_task_buffer_lock);
++	if (mmu->mmid == ISYS_MMID)
++		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
++	else
++		mmu->tlb_invalidate(mmu, -1);
++	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
++
+ 	dev_dbg(dev, "dmamap %d ents %zu pages mapped\n", nents, npages);
+
+ 	return nents;
 diff --git a/drivers/staging/media/ipu7/ipu7-isys.c b/drivers/staging/media/ipu7/ipu7-isys.c
-index cb2f49f3e0..1d1d6f5158 100644
+index cb2f49f3e0fa..1d1d6f515813 100644
 --- a/drivers/staging/media/ipu7/ipu7-isys.c
 +++ b/drivers/staging/media/ipu7/ipu7-isys.c
 @@ -576,6 +576,8 @@ static void isys_remove(struct auxiliary_device *auxdev)
@@ -175,7 +200,7 @@ index cb2f49f3e0..1d1d6f5158 100644
  	isys->icache_prefetch = 0;
  	isys->phy_rext_cal = 0;
 diff --git a/drivers/staging/media/ipu7/ipu7-mmu.c b/drivers/staging/media/ipu7/ipu7-mmu.c
-index ded1986eb8..2119c1ecb1 100644
+index ded1986eb8ba..2119c1ecb1ff 100644
 --- a/drivers/staging/media/ipu7/ipu7-mmu.c
 +++ b/drivers/staging/media/ipu7/ipu7-mmu.c
 @@ -27,6 +27,7 @@
@@ -264,7 +289,7 @@ index ded1986eb8..2119c1ecb1 100644
  		       MMU_REG_INVALIDATE_0);
 
 diff --git a/drivers/staging/media/ipu7/ipu7-mmu.h b/drivers/staging/media/ipu7/ipu7-mmu.h
-index d85bb8ffc7..e4bc485496 100644
+index d85bb8ffc711..e4bc485496f4 100644
 --- a/drivers/staging/media/ipu7/ipu7-mmu.h
 +++ b/drivers/staging/media/ipu7/ipu7-mmu.h
 @@ -20,6 +20,12 @@ struct ipu7_mmu_info;
@@ -289,3 +314,6 @@ index d85bb8ffc7..e4bc485496 100644
  };
 
  struct ipu7_mmu *ipu7_mmu_init(struct device *dev,
+--
+2.43.0
+
