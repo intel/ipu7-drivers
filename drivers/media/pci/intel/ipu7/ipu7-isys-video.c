@@ -468,6 +468,8 @@ static int ipu7_isys_fw_pin_cfg(struct ipu7_isys_video *av,
 	return 0;
 }
 
+#define IPU_ISYS_STREAM_OPEN_ATTEMPTS	5U
+
 /* Create stream and start it using the CSS FW ABI. */
 static int start_stream_firmware(struct ipu7_isys_video *av,
 				 struct ipu7_isys_buffer_list *bl)
@@ -478,73 +480,121 @@ static int start_stream_firmware(struct ipu7_isys_video *av,
 	struct ipu7_insys_buffset *buf = NULL;
 	struct isys_fw_msgs *msg = NULL;
 	struct ipu7_isys_queue *aq;
+	unsigned int attempt;
 	int ret, retout, tout;
+	bool stream_opened = false;
+	bool close_unconfirmed = false;
 	u16 send_type;
 
 	if (WARN_ON(!bl))
 		return -EIO;
 
-	msg = ipu7_get_fw_msg_buf(stream);
-	if (!msg)
-		return -ENOMEM;
-
-	msg->stream_id = stream->stream_handle;
-
-	stream_cfg = &msg->fw_msg.stream;
-	stream_cfg->port_id = stream->stream_source;
-	stream_cfg->vc = stream->vc;
-	stream_cfg->stream_msg_map = IPU_INSYS_STREAM_ENABLE_MSG_SEND_RESP |
-				     IPU_INSYS_STREAM_ENABLE_MSG_SEND_IRQ;
-
-	list_for_each_entry(aq, &stream->queues, node) {
-		struct ipu7_isys_video *__av = ipu7_isys_queue_to_video(aq);
-
-		ret = ipu7_isys_fw_pin_cfg(__av, stream_cfg);
-		if (ret < 0) {
-			ipu7_put_fw_msg_buf(av->isys, (uintptr_t)stream_cfg);
-			return ret;
+	for (attempt = 0; attempt < IPU_ISYS_STREAM_OPEN_ATTEMPTS; attempt++) {
+		msg = ipu7_get_fw_msg_buf(stream);
+		if (!msg) {
+			ret = -ENOMEM;
+			goto out_put_stream_opened;
 		}
-	}
 
-	ipu7_fw_isys_dump_stream_cfg(dev, stream_cfg);
+		msg->stream_id = stream->stream_handle;
+		stream_cfg = &msg->fw_msg.stream;
+		stream_cfg->port_id = stream->stream_source;
+		stream_cfg->vc = stream->vc;
+		stream_cfg->stream_msg_map =
+			IPU_INSYS_STREAM_ENABLE_MSG_SEND_RESP |
+			IPU_INSYS_STREAM_ENABLE_MSG_SEND_IRQ;
 
-	stream->nr_output_pins = stream_cfg->nof_output_pins;
+		list_for_each_entry(aq, &stream->queues, node) {
+			struct ipu7_isys_video *__av =
+				ipu7_isys_queue_to_video(aq);
 
-	reinit_completion(&stream->stream_open_completion);
+			ret = ipu7_isys_fw_pin_cfg(__av, stream_cfg);
+			if (ret < 0) {
+				ipu7_put_fw_msg_buf(av->isys,
+						    (uintptr_t)stream_cfg);
+				goto out_put_stream_opened;
+			}
+		}
 
-	ret = ipu7_fw_isys_complex_cmd(av->isys, stream->stream_handle,
-				       stream_cfg, msg->dma_addr,
-				       sizeof(*stream_cfg),
-				       IPU_INSYS_SEND_TYPE_STREAM_OPEN);
-	if (ret < 0) {
-		dev_err(dev, "can't open stream (%d)\n", ret);
-		ipu7_put_fw_msg_buf(av->isys, (uintptr_t)stream_cfg);
-		return ret;
-	}
+		ipu7_fw_isys_dump_stream_cfg(dev, stream_cfg);
+		stream->nr_output_pins = stream_cfg->nof_output_pins;
 
-	get_stream_opened(av);
+		reinit_completion(&stream->stream_open_completion);
+		stream->error = 0;
 
-	tout = wait_for_completion_timeout(&stream->stream_open_completion,
-					   FW_CALL_TIMEOUT_JIFFIES);
+		ret = ipu7_fw_isys_complex_cmd(av->isys, stream->stream_handle,
+					       stream_cfg, msg->dma_addr,
+					       sizeof(*stream_cfg),
+					       IPU_INSYS_SEND_TYPE_STREAM_OPEN);
+		if (ret < 0) {
+			dev_err(dev, "can't open stream (%d)\n", ret);
+			ipu7_put_fw_msg_buf(av->isys, (uintptr_t)stream_cfg);
+			goto out_put_stream_opened;
+		}
 
-	ipu7_put_fw_msg_buf(av->isys, (uintptr_t)stream_cfg);
+		if (!stream_opened) {
+			get_stream_opened(av);
+			stream_opened = true;
+		}
 
-	if (!tout) {
-		dev_err(dev, "stream open time out\n");
+		tout = wait_for_completion_timeout(&stream->stream_open_completion,
+						   FW_CALL_TIMEOUT_JIFFIES);
+		if (tout) {
+			ipu7_put_fw_msg_buf(av->isys, (uintptr_t)stream_cfg);
+			if (stream->error) {
+				dev_err(dev, "stream open error: %d\n",
+					stream->error);
+				ret = -EIO;
+				goto out_put_stream_opened;
+			}
+
+			dev_dbg(dev, "start stream: open complete\n");
+			break;
+		}
+
+		dev_err(dev, "stream open time out (attempt %u/%u)\n",
+			attempt + 1, IPU_ISYS_STREAM_OPEN_ATTEMPTS);
 		ret = -ETIMEDOUT;
-		goto out_put_stream_opened;
+		if (attempt + 1 == IPU_ISYS_STREAM_OPEN_ATTEMPTS)
+		{
+			goto out_stream_close;
+		}
+
+		/* Do not retry until firmware confirms the timed-out stream closed. */
+		reinit_completion(&stream->stream_close_completion);
+		retout = ipu7_fw_isys_simple_cmd(av->isys, stream->stream_handle,
+						 IPU_INSYS_SEND_TYPE_STREAM_CLOSE);
+		if (retout < 0) {
+			dev_err(dev, "can't close stream before retry (%d)\n",
+				retout);
+			close_unconfirmed = true;
+			goto out_put_stream_opened;
+		}
+
+		tout = wait_for_completion_timeout(&stream->stream_close_completion,
+						   FW_CALL_TIMEOUT_JIFFIES);
+		if (!tout) {
+			dev_err(dev, "stream close timed out before retry\n");
+			close_unconfirmed = true;
+			goto out_put_stream_opened;
+		}
+		if (stream->error) {
+			dev_err(dev, "stream close failed before retry: %d\n",
+				stream->error);
+			ret = -EIO;
+			close_unconfirmed = true;
+			goto out_put_stream_opened;
+		}
+
+		dev_dbg(dev, "stream close complete; retrying stream open\n");
+		ipu7_cleanup_fw_msg_bufs_by_stream_id(av->isys,
+						      stream->stream_handle);
 	}
-	if (stream->error) {
-		dev_err(dev, "stream open error: %d\n", stream->error);
-		ret = -EIO;
-		goto out_put_stream_opened;
-	}
-	dev_dbg(dev, "start stream: open complete\n");
 
 	msg = ipu7_get_fw_msg_buf(stream);
 	if (!msg) {
 		ret = -ENOMEM;
-		goto out_put_stream_opened;
+		goto out_stream_close;
 	}
 	msg->stream_id = stream->stream_handle;
 	buf = &msg->fw_msg.frame;
@@ -555,8 +605,8 @@ static int start_stream_firmware(struct ipu7_isys_video *av,
 	reinit_completion(&stream->stream_start_completion);
 
 	send_type = IPU_INSYS_SEND_TYPE_STREAM_START_AND_CAPTURE;
-	ipu7_fw_isys_dump_frame_buff_set(dev, buf,
-					 stream_cfg->nof_output_pins);
+	ipu7_fw_isys_dump_frame_buff_set(dev, buf, stream->nr_output_pins);
+
 	ret = ipu7_fw_isys_complex_cmd(av->isys, stream->stream_handle, buf,
 				       msg->dma_addr, sizeof(*buf),
 				       send_type);
@@ -587,20 +637,38 @@ out_stream_close:
 	retout = ipu7_fw_isys_simple_cmd(av->isys, stream->stream_handle,
 					 IPU_INSYS_SEND_TYPE_STREAM_CLOSE);
 	if (retout < 0) {
-		dev_dbg(dev, "can't close stream (%d)\n", retout);
+		dev_err(dev, "can't close stream (%d)\n", retout);
+		close_unconfirmed = true;
 		goto out_put_stream_opened;
 	}
 
 	tout = wait_for_completion_timeout(&stream->stream_close_completion,
 					   FW_CALL_TIMEOUT_JIFFIES);
-	if (!tout)
-		dev_err(dev, "stream close time out with error %d\n",
-			stream->error);
-	else
+	if (!tout) {
+		dev_err(dev, "stream close time out\n");
+		close_unconfirmed = true;
+	} else if (stream->error) {
+		dev_err(dev, "stream close error: %d\n", stream->error);
+		close_unconfirmed = true;
+	} else {
 		dev_dbg(dev, "stream close complete\n");
+		ipu7_cleanup_fw_msg_bufs_by_stream_id(av->isys,
+						      stream->stream_handle);
+	}
 
 out_put_stream_opened:
-	put_stream_opened(av);
+	if (close_unconfirmed) {
+		/* FW may still own the handle; keep it counted until FW stops */
+		dev_err(dev, "stream %u close unconfirmed, requesting isys reset\n",
+			stream->stream_handle);
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+		mutex_lock(&av->isys->reset_mutex);
+		av->isys->need_reset = true;
+		mutex_unlock(&av->isys->reset_mutex);
+#endif
+	} else if (stream_opened) {
+		put_stream_opened(av);
+	}
 
 	return ret;
 }
@@ -972,6 +1040,18 @@ out:
 	return ret;
 }
 
+static void ipu7_isys_fw_stop(struct ipu7_isys *isys)
+{
+	unsigned long flags;
+
+	ipu7_fw_isys_close(isys);
+
+	/* Drop counts still held for streams whose FW close was unconfirmed */
+	spin_lock_irqsave(&isys->streams_lock, flags);
+	isys->stream_opened = 0;
+	spin_unlock_irqrestore(&isys->streams_lock, flags);
+}
+
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 void ipu7_isys_fw_close(struct ipu7_isys *isys)
 {
@@ -980,7 +1060,7 @@ void ipu7_isys_fw_close(struct ipu7_isys *isys)
 	isys->ref_count--;
 
 	if (!isys->ref_count)
-		ipu7_fw_isys_close(isys);
+		ipu7_isys_fw_stop(isys);
 
 	mutex_unlock(&isys->mutex);
 
@@ -1001,7 +1081,7 @@ void ipu7_isys_fw_close(struct ipu7_isys *isys)
 	isys->ref_count--;
 
 	if (!isys->ref_count)
-		ipu7_fw_isys_close(isys);
+		ipu7_isys_fw_stop(isys);
 
 	mutex_unlock(&isys->mutex);
 	pm_runtime_put(&isys->adev->auxdev.dev);
