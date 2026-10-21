@@ -1,0 +1,103 @@
+From ed73cafe221b2466def6568ba92f66d53a365207 Mon Sep 17 00:00:00 2001
+From: "Yew, Chang Ching" <chang.ching.yew@intel.com>
+Date: Thu, 22 Jan 2026 08:08:39 +0800
+Subject: [PATCH 2/3] media: staging: ipu7: get source pad according to csi2 ep
+ fwnode
+
+Signed-off-by: He, Pengpeng <pengpengx.he@intel.com>
+Signed-off-by: Yew, Chang Ching <chang.ching.yew@intel.com>
+---
+ drivers/staging/media/ipu7/ipu7-isys.c | 50 +++++++++++++++++++-------
+ drivers/staging/media/ipu7/ipu7-isys.h |  1 +
+ 2 files changed, 39 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7-isys.c b/drivers/staging/media/ipu7/ipu7-isys.c
+index 2bd8968a78cdf..74c45c3e7b5e4 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -55,23 +55,50 @@ isys_complete_ext_device_registration(struct ipu7_isys *isys,
+ 				      struct ipu7_isys_csi2_config *csi2)
+ {
+ 	struct device *dev = &isys->adev->auxdev.dev;
+-	unsigned int i;
++	int source_pad;
+ 	int ret;
+ 
+ 	v4l2_set_subdev_hostdata(sd, csi2);
+ 
+-	for (i = 0; i < sd->entity.num_pads; i++) {
+-		if (sd->entity.pads[i].flags & MEDIA_PAD_FL_SOURCE)
+-			break;
+-	}
++	if (csi2->ep) {
++		struct fwnode_handle *ep_source;
+ 
+-	if (i == sd->entity.num_pads) {
+-		dev_warn(dev, "no source pad in external entity\n");
+-		ret = -ENOENT;
+-		goto skip_unregister_subdev;
++		ep_source = fwnode_graph_get_remote_endpoint(csi2->ep);
++		if (!ep_source) {
++			dev_warn(dev, "no remote endpoint for subdev\n");
++			ret = -ENOENT;
++			goto skip_unregister_subdev;
++		}
++
++		source_pad = media_entity_get_fwnode_pad(&sd->entity, ep_source,
++						MEDIA_PAD_FL_SOURCE);
++
++		if (source_pad < 0) {
++			dev_warn(dev, "error in no acquire source pad in external entity\n");
++			ret = -ENOENT;
++			goto skip_unregister_subdev;
++		}
++
++		dev_dbg(&isys->adev->auxdev.dev, "%s: CSI2 ep %pfw\n", __func__,
++			csi2->ep);
++		dev_dbg(&isys->adev->auxdev.dev,
++			"%s: source pad %d for subdev %s\n", __func__, source_pad,
++			sd->name);
++
++		fwnode_handle_put(ep_source);
++	} else {
++		for (source_pad = 0; source_pad < sd->entity.num_pads; source_pad++) {
++			if (sd->entity.pads[source_pad].flags & MEDIA_PAD_FL_SOURCE)
++				break;
++		}
++		if (source_pad == sd->entity.num_pads) {
++			dev_warn(dev, "no source pad in external entity\n");
++			ret = -ENOENT;
++			goto skip_unregister_subdev;
++		}
+ 	}
+ 
+-	ret = media_create_pad_link(&sd->entity, i,
++	ret = media_create_pad_link(&sd->entity, source_pad,
+ 				    &isys->csi2[csi2->port].asd.sd.entity,
+ 				    0, MEDIA_LNK_FL_ENABLED |
+ 				    MEDIA_LNK_FL_IMMUTABLE);
+@@ -226,8 +253,7 @@ static int isys_notifier_init(struct ipu7_isys *isys)
+ 		s_asd->csi2.port = vep.base.port;
+ 		s_asd->csi2.nlanes = vep.bus.mipi_csi2.num_data_lanes;
+ 		s_asd->csi2.bus_type = vep.bus_type;
+-
+-		fwnode_handle_put(ep);
++		s_asd->csi2.ep = ep;
+ 
+ 		continue;
+ 
+diff --git a/drivers/staging/media/ipu7/ipu7-isys.h b/drivers/staging/media/ipu7/ipu7-isys.h
+index 17d4d56301691..55afb5b6e2d94 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys.h
++++ b/drivers/staging/media/ipu7/ipu7-isys.h
+@@ -141,6 +141,7 @@ struct ipu7_isys_csi2_config {
+ 	unsigned int nlanes;
+ 	unsigned int port;
+ 	enum v4l2_mbus_type bus_type;
++	struct fwnode_handle *ep;
+ };
+ 
+ struct sensor_async_sd {
+-- 
+2.51.1
+
