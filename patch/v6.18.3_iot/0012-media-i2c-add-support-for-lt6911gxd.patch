@@ -1,0 +1,42 @@
+From 413a176db607ce83e402a8d3a5bded837354e622 Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Sat, 25 Oct 2025 16:30:08 +0800
+Subject: [PATCH 12/26] media: i2c: add support for lt6911gxd
+
+Signed-off-by: linya14x <linx.yang@intel.com>
+---
+ drivers/media/i2c/Kconfig  | 11 +++++++++++
+ drivers/media/i2c/Makefile |  1 +
+ 2 files changed, 12 insertions(+)
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index cdd7ba5da0..33866b6fe0 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -277,6 +277,17 @@ config VIDEO_IMX415
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called imx415.
+
++config VIDEO_LT6911GXD
++        tristate "Lontium LT6911GXD decoder"
++        depends on ACPI || COMPILE_TEST
++        select V4L2_CCI_I2C
++        help
++          This is a Video4Linux2 sensor-level driver for the Lontium
++          LT6911GXD HDMI to MIPI CSI-2 bridge.
++
++          To compile this driver as a module, choose M here: the
++          module will be called lt6911gxd.
++
+ config VIDEO_MAX9271_LIB
+ 	tristate
+
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index 57cdd8dc96..f03528f27c 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -165,3 +165,4 @@ obj-$(CONFIG_VIDEO_VP27SMPX) += vp27smpx.o
+ obj-$(CONFIG_VIDEO_VPX3220) += vpx3220.o
+ obj-$(CONFIG_VIDEO_WM8739) += wm8739.o
+ obj-$(CONFIG_VIDEO_WM8775) += wm8775.o
++obj-$(CONFIG_VIDEO_LT6911GXD) += lt6911gxd.o

@@ -59,23 +59,64 @@ isys_complete_ext_device_registration(struct ipu7_isys *isys,
 				      struct ipu7_isys_csi2_config *csi2)
 {
 	struct device *dev = &isys->adev->auxdev.dev;
-	unsigned int i;
+	int source_pad;
 	int ret;
 
 	v4l2_set_subdev_hostdata(sd, csi2);
 
-	for (i = 0; i < sd->entity.num_pads; i++) {
-		if (sd->entity.pads[i].flags & MEDIA_PAD_FL_SOURCE)
-			break;
+	if (csi2->ep) {
+		struct v4l2_fwnode_endpoint vep_source = {
+			.bus_type = V4L2_MBUS_UNKNOWN
+		};
+		struct fwnode_handle *ep_source;
+
+		ep_source = fwnode_graph_get_remote_endpoint(csi2->ep);
+		if (!ep_source) {
+			dev_warn(dev, "no remote endpoint for subdev\n");
+			ret = -ENOENT;
+			goto skip_unregister_subdev;
+		}
+
+		source_pad = media_entity_get_fwnode_pad(&sd->entity, ep_source,
+							 MEDIA_PAD_FL_SOURCE);
+
+		ret = v4l2_fwnode_endpoint_parse(ep_source, &vep_source);
+		fwnode_handle_put(ep_source);
+
+		if (source_pad < 0) {
+			dev_warn(
+				dev,
+				"error in no acquire source pad in external entity\n");
+			ret = -ENOENT;
+			goto skip_unregister_subdev;
+		}
+
+		dev_dbg(&isys->adev->auxdev.dev, "%s: CSI2 ep %pfw\n", __func__,
+			csi2->ep);
+		dev_dbg(&isys->adev->auxdev.dev,
+			"%s: source pad %d for subdev %s\n", __func__,
+			source_pad, sd->name);
+
+		if (ret)
+			goto skip_unregister_subdev;
+
+		csi2->nlanes = vep_source.bus.mipi_csi2.num_data_lanes;
+		csi2->bus_type = vep_source.bus_type;
+	} else {
+		for (source_pad = 0; source_pad < sd->entity.num_pads;
+		     source_pad++) {
+			if (sd->entity.pads[source_pad].flags &
+			    MEDIA_PAD_FL_SOURCE)
+				break;
+		}
+		if (source_pad == sd->entity.num_pads) {
+			dev_warn(dev, "no source pad in external entity\n");
+			ret = -ENOENT;
+			goto skip_unregister_subdev;
+		}
 	}
 
-	if (i == sd->entity.num_pads) {
-		dev_warn(dev, "no source pad in external entity\n");
-		ret = -ENOENT;
-		goto skip_unregister_subdev;
-	}
-
-	ret = media_create_pad_link(&sd->entity, i,
+	ret = media_create_pad_link(&sd->entity, source_pad,
 				    &isys->csi2[csi2->port].asd.sd.entity,
 				    0, MEDIA_LNK_FL_ENABLED |
 				    MEDIA_LNK_FL_IMMUTABLE);
@@ -300,9 +341,18 @@ static int isys_notifier_complete(struct v4l2_async_notifier *notifier)
 	return v4l2_device_register_subdev_nodes(&isys->v4l2_dev);
 }
 
+static void isys_notifier_destroy(struct v4l2_async_connection *asc)
+{
+	struct sensor_async_sd *s_asd =
+		container_of(asc, struct sensor_async_sd, asc);
+
+	fwnode_handle_put(s_asd->csi2.ep);
+}
+
 static const struct v4l2_async_notifier_operations isys_async_ops = {
 	.bound = isys_notifier_bound,
 	.complete = isys_notifier_complete,
+	.destroy = isys_notifier_destroy,
 };
 
 static int isys_notifier_init(struct ipu7_isys *isys)
@@ -351,8 +401,7 @@ static int isys_notifier_init(struct ipu7_isys *isys)
 		s_asd->csi2.port = vep.base.port;
 		s_asd->csi2.nlanes = vep.bus.mipi_csi2.num_data_lanes;
 		s_asd->csi2.bus_type = vep.bus_type;
-
-		fwnode_handle_put(ep);
+		s_asd->csi2.ep = ep;
 
 		continue;
 

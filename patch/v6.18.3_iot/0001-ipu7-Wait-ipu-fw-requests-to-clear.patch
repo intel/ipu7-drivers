@@ -1,0 +1,291 @@
+From 7c226ce24f27e00ab45f31881b6e48a9e2bc3d00 Mon Sep 17 00:00:00 2001
+From: hepengpx <pengpengx.he@intel.com>
+Date: Wed, 17 Jun 2026 10:13:25 +0800
+Subject: [PATCH 01/26] ipu7: Wait ipu fw requests to clear
+
+IPU ISYS MMUs run in parallel, and runtime TLB invalidation may
+overlap with ongoing data movement. For fw msg buf expansion,
+invalidating ISYS MMU0 is sufficient.
+
+The goal of acquire_fw_task_buffer_lock is to block subsequent
+getting fw message buffer or task queue while waiting for
+framebuflist_fw to drain.
+
+With "glimagesink sync=false", gstreamer will launch each stream one
+by one. So, when isys message buffer is not enough, just allocating
+max buffer count(10) is enough.
+
+Signed-off-by: hepengpx <pengpengx.he@intel.com>
+---
+ drivers/staging/media/ipu7/ipu7-bus.c  |  2 +
+ drivers/staging/media/ipu7/ipu7-bus.h  |  6 +++
+ drivers/staging/media/ipu7/ipu7-dma.c  |  8 +++-
+ drivers/staging/media/ipu7/ipu7-isys.c | 30 ++++++++++++++-
+ drivers/staging/media/ipu7/ipu7-mmu.c  | 52 +++++++++++++++++++++++++-
+ drivers/staging/media/ipu7/ipu7-mmu.h  |  8 +++-
+ 6 files changed, 99 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7-bus.c b/drivers/staging/media/ipu7/ipu7-bus.c
+index 7da44fde00..cd0641781c 100644
+--- a/drivers/staging/media/ipu7/ipu7-bus.c
++++ b/drivers/staging/media/ipu7/ipu7-bus.c
+@@ -75,6 +75,7 @@ static void ipu7_bus_release(struct device *dev)
+ {
+ 	struct ipu7_bus_device *adev = to_ipu7_bus_device(dev);
+
++	mutex_destroy(&adev->acquire_fw_task_buffer_lock);
+ 	kfree(adev->pdata);
+ 	kfree(adev);
+ }
+@@ -96,6 +97,7 @@ ipu7_bus_initialize_device(struct pci_dev *pdev, struct device *parent,
+ 	adev->isp = isp;
+ 	adev->ctrl = ctrl;
+ 	adev->pdata = pdata;
++	mutex_init(&adev->acquire_fw_task_buffer_lock);
+ 	auxdev = &adev->auxdev;
+ 	auxdev->name = name;
+ 	auxdev->id = (pci_domain_nr(pdev->bus) << 16) |
+diff --git a/drivers/staging/media/ipu7/ipu7-bus.h b/drivers/staging/media/ipu7/ipu7-bus.h
+index 45157df16e..eb9d0c907d 100644
+--- a/drivers/staging/media/ipu7/ipu7-bus.h
++++ b/drivers/staging/media/ipu7/ipu7-bus.h
+@@ -46,6 +46,12 @@ struct ipu7_bus_device {
+ 	struct ia_gofo_boot_config *boot_config;
+ 	dma_addr_t boot_config_dma_addr;
+ 	u32 boot_config_size;
++
++	/* Serialize FW message buffer or task queue acquisition against
++	 * TLB invalidation.
++	 */
++	struct mutex acquire_fw_task_buffer_lock;
++	unsigned int (*get_running_fw_task_count)(struct ipu7_bus_device *adev);
+ };
+
+ struct ipu7_auxdrv_data {
+diff --git a/drivers/staging/media/ipu7/ipu7-dma.c b/drivers/staging/media/ipu7/ipu7-dma.c
+index a118b41b2f..05478ab0f0 100644
+--- a/drivers/staging/media/ipu7/ipu7-dma.c
++++ b/drivers/staging/media/ipu7/ipu7-dma.c
+@@ -206,6 +206,8 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
+ 		}
+ 	}
+
++	if (mmu->mmid == ISYS_MMID)
++		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
+ 	info->vaddr = vmap(pages, count, VM_USERMAP, PAGE_KERNEL);
+ 	if (!info->vaddr)
+ 		goto out_unmap;
+@@ -286,7 +288,7 @@ void ipu7_dma_free(struct ipu7_bus_device *sys, size_t size, void *vaddr,
+
+ 	__free_buffer(pages, size, attrs);
+
+-	mmu->tlb_invalidate(mmu);
++	mmu->tlb_invalidate(mmu, -1);
+
+ 	__free_iova(&mmu->dmap->iovad, iova);
+
+@@ -366,7 +368,9 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
+ 	ipu7_mmu_unmap(mmu->dmap->mmu_info, PFN_PHYS(iova->pfn_lo),
+ 		       PFN_PHYS(iova_size(iova)));
+
+-	mmu->tlb_invalidate(mmu);
++	mutex_lock(&sys->acquire_fw_task_buffer_lock);
++	mmu->tlb_invalidate(mmu, -1);
++	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
+ 	__free_iova(&mmu->dmap->iovad, iova);
+ }
+ EXPORT_SYMBOL_NS_GPL(ipu7_dma_unmap_sg, "INTEL_IPU7");
+diff --git a/drivers/staging/media/ipu7/ipu7-isys.c b/drivers/staging/media/ipu7/ipu7-isys.c
+index cb2f49f3e0..1d1d6f5158 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -576,6 +576,8 @@ static void isys_remove(struct auxiliary_device *auxdev)
+ 	struct isys_fw_msgs *fwmsg, *safe;
+ 	struct ipu7_bus_device *adev = auxdev_to_adev(auxdev);
+
++	adev->get_running_fw_task_count = NULL;
++
+ 	for (int i = 0; i < IPU_ISYS_MAX_STREAMS; i++)
+ 		mutex_destroy(&isys->streams[i].mutex);
+
+@@ -634,6 +636,23 @@ static int alloc_fw_msg_bufs(struct ipu7_isys *isys, int amount)
+ 	return -ENOMEM;
+ }
+
++static unsigned int ipu7_isys_get_running_fw_task_count(
++					      struct ipu7_bus_device *adev)
++{
++	struct ipu7_isys *isys = ipu7_bus_get_drvdata(adev);
++	unsigned long flags;
++	unsigned int count;
++
++	if (!isys)
++		return 0;
++
++	spin_lock_irqsave(&isys->listlock, flags);
++	count = list_count_nodes(&isys->framebuflist_fw);
++	spin_unlock_irqrestore(&isys->listlock, flags);
++
++	return count;
++}
++
+ struct isys_fw_msgs *ipu7_get_fw_msg_buf(struct ipu7_isys_stream *stream)
+ {
+ 	struct device *dev = &stream->isys->adev->auxdev.dev;
+@@ -642,18 +661,22 @@ struct isys_fw_msgs *ipu7_get_fw_msg_buf(struct ipu7_isys_stream *stream)
+ 	unsigned long flags;
+ 	int ret;
+
++	mutex_lock(&isys->adev->acquire_fw_task_buffer_lock);
+ 	spin_lock_irqsave(&isys->listlock, flags);
+ 	if (list_empty(&isys->framebuflist)) {
+ 		spin_unlock_irqrestore(&isys->listlock, flags);
+ 		dev_dbg(dev, "Frame buffer list empty\n");
+
+-		ret = alloc_fw_msg_bufs(isys, 5);
+-		if (ret < 0)
++		ret = alloc_fw_msg_bufs(isys, 10);
++		if (ret < 0) {
++			mutex_unlock(&isys->adev->acquire_fw_task_buffer_lock);
+ 			return NULL;
++		}
+
+ 		spin_lock_irqsave(&isys->listlock, flags);
+ 		if (list_empty(&isys->framebuflist)) {
+ 			spin_unlock_irqrestore(&isys->listlock, flags);
++			mutex_unlock(&isys->adev->acquire_fw_task_buffer_lock);
+ 			dev_err(dev, "Frame list empty\n");
+ 			return NULL;
+ 		}
+@@ -661,6 +684,7 @@ struct isys_fw_msgs *ipu7_get_fw_msg_buf(struct ipu7_isys_stream *stream)
+ 	msg = list_last_entry(&isys->framebuflist, struct isys_fw_msgs, head);
+ 	list_move(&msg->head, &isys->framebuflist_fw);
+ 	spin_unlock_irqrestore(&isys->listlock, flags);
++	mutex_unlock(&isys->adev->acquire_fw_task_buffer_lock);
+ 	memset(&msg->fw_msg, 0, sizeof(msg->fw_msg));
+
+ 	return msg;
+@@ -744,6 +768,8 @@ static int isys_probe(struct auxiliary_device *auxdev,
+ 	INIT_LIST_HEAD(&isys->framebuflist_fw);
+
+ 	dev_set_drvdata(&auxdev->dev, isys);
++	adev->get_running_fw_task_count =
++		ipu7_isys_get_running_fw_task_count;
+
+ 	isys->icache_prefetch = 0;
+ 	isys->phy_rext_cal = 0;
+diff --git a/drivers/staging/media/ipu7/ipu7-mmu.c b/drivers/staging/media/ipu7/ipu7-mmu.c
+index ded1986eb8..2119c1ecb1 100644
+--- a/drivers/staging/media/ipu7/ipu7-mmu.c
++++ b/drivers/staging/media/ipu7/ipu7-mmu.c
+@@ -27,6 +27,7 @@
+ #include <linux/vmalloc.h>
+
+ #include "ipu7.h"
++#include "ipu7-bus.h"
+ #include "ipu7-dma.h"
+ #include "ipu7-mmu.h"
+ #include "ipu7-platform-regs.h"
+@@ -52,6 +53,8 @@
+ #define TBL_PHYS_ADDR(a)	((phys_addr_t)(a) << ISP_PADDR_SHIFT)
+
+ #define MMU_TLB_INVALIDATE_TIMEOUT	2000
++#define WAIT_FW_MSG_BUFS_CLEAR_TIME_MS	17
++#define WAIT_FW_MSG_BUFS_CLEAR_TIMES	5
+
+ static __maybe_unused void mmu_irq_handler(struct ipu7_mmu *mmu)
+ {
+@@ -66,12 +69,41 @@ static __maybe_unused void mmu_irq_handler(struct ipu7_mmu *mmu)
+ 	}
+ }
+
+-static void tlb_invalidate(struct ipu7_mmu *mmu)
++static void tlb_invalidate(struct ipu7_mmu *mmu, int mmu_id)
+ {
+ 	unsigned long flags;
++	unsigned int start, end;
+ 	unsigned int i;
+ 	int ret;
+ 	u32 val;
++	unsigned int prev_task_cnt = UINT_MAX;
++	unsigned int curr_task_cnt;
++	unsigned int not_decreasing_count = 0;
++	struct ipu7_bus_device *adev = to_ipu7_bus_device(mmu->dev);
++
++	if (adev->get_running_fw_task_count) {
++		while (1) {
++			curr_task_cnt =
++				adev->get_running_fw_task_count(adev);
++			if (curr_task_cnt == 0)
++				break;
++
++			if (curr_task_cnt >= prev_task_cnt)
++				not_decreasing_count++;
++			else
++				not_decreasing_count = 0;
++			prev_task_cnt = curr_task_cnt;
++
++			if (not_decreasing_count >
++			    WAIT_FW_MSG_BUFS_CLEAR_TIMES) {
++				dev_warn(mmu->dev,
++					 "wait running fw tasks clear timeout\n");
++				break;
++			}
++
++			msleep(WAIT_FW_MSG_BUFS_CLEAR_TIME_MS);
++		}
++	}
+
+ 	spin_lock_irqsave(&mmu->ready_lock, flags);
+ 	if (!mmu->ready) {
+@@ -79,7 +111,23 @@ static void tlb_invalidate(struct ipu7_mmu *mmu)
+ 		return;
+ 	}
+
+-	for (i = 0; i < mmu->nr_mmus; i++) {
++	/* mmu_id < 0: all MMUs, otherwise one MMU. */
++	if (mmu_id < 0) {
++		start = 0;
++		end = mmu->nr_mmus;
++	} else if (mmu_id >= mmu->nr_mmus) {
++		dev_warn(mmu->dev, "invalid mmu_id %d, nr_mmus %u\n",
++			 mmu_id, mmu->nr_mmus);
++		spin_unlock_irqrestore(&mmu->ready_lock, flags);
++		return;
++	}
++
++	if (mmu_id >= 0) {
++		start = mmu_id;
++		end = mmu_id + 1;
++	}
++
++	for (i = start; i < end; i++) {
+ 		writel(0xffffffffU, mmu->mmu_hw[i].base +
+ 		       MMU_REG_INVALIDATE_0);
+
+diff --git a/drivers/staging/media/ipu7/ipu7-mmu.h b/drivers/staging/media/ipu7/ipu7-mmu.h
+index d85bb8ffc7..e4bc485496 100644
+--- a/drivers/staging/media/ipu7/ipu7-mmu.h
++++ b/drivers/staging/media/ipu7/ipu7-mmu.h
+@@ -20,6 +20,12 @@ struct ipu7_mmu_info;
+ #define ISYS_MMID 0x1
+ #define PSYS_MMID 0x0
+
++#define IPU_IS_MMU_FW_RD 0
++#define IPU_IS_MMU_FW_WR 1
++#define IPU_IS_MMU_M0 2
++#define IPU_IS_MMU_M1 3
++#define IPU_IS_MMU_UPIPE 4
++
+ /* IPU7 for LNL */
+ /* IS MMU Cmd RD */
+ #define IPU7_IS_MMU_FW_RD_OFFSET		0x274000
+@@ -396,7 +402,7 @@ struct ipu7_mmu {
+ 	bool ready;
+ 	spinlock_t ready_lock;	/* Serialize access to bool ready */
+
+-	void (*tlb_invalidate)(struct ipu7_mmu *mmu);
++	void (*tlb_invalidate)(struct ipu7_mmu *mmu, int mmu_id);
+ };
+
+ struct ipu7_mmu *ipu7_mmu_init(struct device *dev,
