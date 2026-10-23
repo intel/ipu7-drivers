@@ -1090,14 +1090,14 @@ struct isys_fw_msgs *ipu7_get_fw_msg_buf(struct ipu7_isys_stream *stream)
 	spin_lock_irqsave(&isys->listlock, flags);
 	if (list_empty(&isys->framebuflist)) {
 		spin_unlock_irqrestore(&isys->listlock, flags);
+		mutex_unlock(&isys->adev->acquire_fw_task_buffer_lock);
 		dev_dbg(dev, "Frame buffer list empty\n");
 
 		ret = alloc_fw_msg_bufs(isys, 10);
-		if (ret < 0) {
-			mutex_unlock(&isys->adev->acquire_fw_task_buffer_lock);
+		if (ret < 0)
 			return NULL;
-		}
 
+		mutex_lock(&isys->adev->acquire_fw_task_buffer_lock);
 		spin_lock_irqsave(&isys->listlock, flags);
 		if (list_empty(&isys->framebuflist)) {
 			spin_unlock_irqrestore(&isys->listlock, flags);
