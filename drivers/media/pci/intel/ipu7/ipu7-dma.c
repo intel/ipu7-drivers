@@ -221,6 +221,8 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
 
 	if (mmu->mmid == ISYS_MMID)
 		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
+	else
+		mmu->tlb_invalidate(mmu, -1);
 
 	info->vaddr = vmap(pages, count, VM_USERMAP, PAGE_KERNEL);
 	if (!info->vaddr)
@@ -310,7 +312,12 @@ void ipu7_dma_free(struct ipu7_bus_device *sys, size_t size, void *vaddr,
 
 	__free_buffer(pages, size, attrs);
 
-	mmu->tlb_invalidate(mmu, -1);
+	mutex_lock(&sys->acquire_fw_task_buffer_lock);
+	if (mmu->mmid == ISYS_MMID)
+		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
+	else
+		mmu->tlb_invalidate(mmu, -1);
+	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
 
 	__free_iova(&mmu->dmap->iovad, iova);
 
@@ -398,7 +405,10 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 		       PFN_PHYS(iova_size(iova)));
 
 	mutex_lock(&sys->acquire_fw_task_buffer_lock);
-	mmu->tlb_invalidate(mmu, -1);
+	if (mmu->mmid == ISYS_MMID)
+		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
+	else
+		mmu->tlb_invalidate(mmu, -1);
 	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
 	__free_iova(&mmu->dmap->iovad, iova);
 }
@@ -479,6 +489,13 @@ int ipu7_dma_map_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 
 		iova_addr += PFN_UP(sg_dma_len(sg));
 	}
+
+	mutex_lock(&sys->acquire_fw_task_buffer_lock);
+	if (mmu->mmid == ISYS_MMID)
+		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
+	else
+		mmu->tlb_invalidate(mmu, -1);
+	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
 
 	dev_dbg(dev, "dmamap %d ents %zu pages mapped\n", nents, npages);
 
