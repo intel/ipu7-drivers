@@ -55,7 +55,7 @@
 
 #define MMU_TLB_INVALIDATE_TIMEOUT	2000
 #define WAIT_FW_MSG_BUFS_CLEAR_TIME_MS	17
-#define WAIT_FW_MSG_BUFS_CLEAR_TIMES	5
+#define WAIT_FW_MSG_BUFS_CLEAR_TIMES	20
 
 static __maybe_unused void mmu_irq_handler(struct ipu7_mmu *mmu)
 {
@@ -88,7 +88,7 @@ static void tlb_invalidate(struct ipu7_mmu *mmu, int mmu_id)
 			if (curr_task_cnt == 0)
 				break;
 
-			if (curr_task_cnt >= prev_task_cnt)
+			if (curr_task_cnt == prev_task_cnt)
 				not_decreasing_count++;
 			else
 				not_decreasing_count = 0;

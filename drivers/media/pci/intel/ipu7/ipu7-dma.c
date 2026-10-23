@@ -219,9 +219,6 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
 		}
 	}
 
-	if (mmu->mmid == ISYS_MMID)
-		mmu->tlb_invalidate(mmu, IPU_IS_MMU_FW_RD);
-
 	info->vaddr = vmap(pages, count, VM_USERMAP, PAGE_KERNEL);
 	if (!info->vaddr)
 		goto out_unmap;
@@ -232,6 +229,10 @@ void *ipu7_dma_alloc(struct ipu7_bus_device *sys, size_t size,
 	info->ipu7_iova = *dma_handle;
 	info->size = size;
 	list_add(&info->list, &mmu->vma_list);
+
+	mutex_lock(&sys->acquire_fw_task_buffer_lock);
+	mmu->tlb_invalidate(mmu, -1);
+	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
 
 	return info->vaddr;
 
@@ -309,10 +310,11 @@ void ipu7_dma_free(struct ipu7_bus_device *sys, size_t size, void *vaddr,
 		       PFN_PHYS(iova_size(iova)));
 
 	__free_buffer(pages, size, attrs);
-
-	mmu->tlb_invalidate(mmu, -1);
-
 	__free_iova(&mmu->dmap->iovad, iova);
+
+	mutex_lock(&sys->acquire_fw_task_buffer_lock);
+	mmu->tlb_invalidate(mmu, -1);
+	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
 
 	kfree(info);
 }
@@ -396,11 +398,11 @@ void ipu7_dma_unmap_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 		iova->pfn_lo, iova->pfn_hi);
 	ipu7_mmu_unmap(mmu->dmap->mmu_info, PFN_PHYS(iova->pfn_lo),
 		       PFN_PHYS(iova_size(iova)));
+	__free_iova(&mmu->dmap->iovad, iova);
 
 	mutex_lock(&sys->acquire_fw_task_buffer_lock);
 	mmu->tlb_invalidate(mmu, -1);
 	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
-	__free_iova(&mmu->dmap->iovad, iova);
 }
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 EXPORT_SYMBOL_NS_GPL(ipu7_dma_unmap_sg, "INTEL_IPU7");
@@ -479,6 +481,10 @@ int ipu7_dma_map_sg(struct ipu7_bus_device *sys, struct scatterlist *sglist,
 
 		iova_addr += PFN_UP(sg_dma_len(sg));
 	}
+
+	mutex_lock(&sys->acquire_fw_task_buffer_lock);
+	mmu->tlb_invalidate(mmu, -1);
+	mutex_unlock(&sys->acquire_fw_task_buffer_lock);
 
 	dev_dbg(dev, "dmamap %d ents %zu pages mapped\n", nents, npages);
 
