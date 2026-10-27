@@ -747,6 +747,13 @@ static void ipu7_isys_cphy_config(struct ipu7_isys *isys, u8 id, u8 lanes,
 	if (is_ipu7(isys->adev->isp->hw_ver))
 		lanes = 3;
 
+	/*
+	 * An aggregated port A+B is a single 5-pair macro carrying 3 trios:
+	 * port A's three pairs hold trios 0-1, port B's two hold trio 2.
+	 */
+	if (aggregation && id != PORT_A)
+		trios = 1;
+
 	dwc_phy_write_mask(isys, id, CORE_DIG_RW_COMMON_7, val, 0, 9);
 	dwc_phy_write_mask(isys, id, PPI_STARTUP_RW_COMMON_DPHY_7, 104, 0, 7);
 	dwc_phy_write_mask(isys, id, PPI_STARTUP_RW_COMMON_DPHY_8, 16, 0, 7);
