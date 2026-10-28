@@ -13,6 +13,7 @@
 #include <linux/kthread.h>
 #include <linux/mm.h>
 #include <linux/module.h>
+#include <linux/overflow.h>
 #include <linux/pm_runtime.h>
 #include <linux/poll.h>
 #include <uapi/linux/sched/types.h>
@@ -50,18 +51,25 @@ static DEFINE_MUTEX(ipu7_psys_mutex);
 static int ipu7_psys_get_userpages(struct ipu7_dma_buf_attach *attach)
 {
 	struct vm_area_struct *vma;
-	unsigned long start, end;
-	int npages, array_size;
+	unsigned long start, last, count;
+	int npages;
 	struct page **pages;
 	struct sg_table *sgt;
 	int ret = -ENOMEM;
 	int nr = 0;
 	u32 flags;
 
+	if (!attach->len || attach->len > ULONG_MAX)
+		return -EINVAL;
+
 	start = (unsigned long)attach->userptr;
-	end = PAGE_ALIGN(start + attach->len);
-	npages = PHYS_PFN(end - (start & PAGE_MASK));
-	array_size = npages * sizeof(struct page *);
+	if (check_add_overflow(start, (unsigned long)attach->len - 1, &last))
+		return -EOVERFLOW;
+
+	count = (last >> PAGE_SHIFT) - (start >> PAGE_SHIFT) + 1;
+	if (count > INT_MAX)
+		return -E2BIG;
+	npages = count;
 
 	sgt = kzalloc(sizeof(*sgt), GFP_KERNEL);
 	if (!sgt)
@@ -69,7 +77,7 @@ static int ipu7_psys_get_userpages(struct ipu7_dma_buf_attach *attach)
 
 	WARN_ON_ONCE(attach->npages);
 
-	pages = kvzalloc(array_size, GFP_KERNEL);
+	pages = kvcalloc(npages, sizeof(*pages), GFP_KERNEL);
 	if (!pages)
 		goto free_sgt;
 
@@ -784,6 +792,9 @@ kbuf_map_fail:
 	dma_buf_detach(kbuf->dbuf, kbuf->db_attach);
 
 attach_fail:
+	kbuf->db_attach = NULL;
+	kbuf->sgt = NULL;
+	kbuf->dbuf = NULL;
 	list_del(&kbuf->list);
 	if (!kbuf->userptr)
 		kfree(kbuf);
