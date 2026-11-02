@@ -244,6 +244,7 @@ struct ipu7_psys_pdata {
 int request_cpd_fw(const struct firmware **firmware_p, const char *name,
 		   struct device *device);
 void ipu_internal_pdata_init(struct ipu_isys_internal_pdata *isys_ipdata,
-			     struct ipu_psys_internal_pdata *psys_ipdata);
+			     struct ipu_psys_internal_pdata *psys_ipdata,
+			     u8 hw_ver);
 void ipu7_dump_fw_error_log(const struct ipu7_bus_device *adev);
 #endif /* IPU7_H */
