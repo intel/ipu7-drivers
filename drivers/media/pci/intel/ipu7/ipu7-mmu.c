@@ -55,7 +55,7 @@
 
 #define MMU_TLB_INVALIDATE_TIMEOUT	2000
 #define WAIT_FW_MSG_BUFS_CLEAR_TIME_MS	17
-#define WAIT_FW_MSG_BUFS_CLEAR_TIMES	5
+#define WAIT_FW_MSG_BUFS_CLEAR_TIMES	20
 
 static __maybe_unused void mmu_irq_handler(struct ipu7_mmu *mmu)
 {
@@ -84,11 +84,12 @@ static void tlb_invalidate(struct ipu7_mmu *mmu, int mmu_id)
 
 	if (adev->get_running_fw_task_count) {
 		while (1) {
-			curr_task_cnt = adev->get_running_fw_task_count(adev);
+			curr_task_cnt =
+				adev->get_running_fw_task_count(adev);
 			if (curr_task_cnt == 0)
 				break;
 
-			if (curr_task_cnt >= prev_task_cnt)
+			if (curr_task_cnt == prev_task_cnt)
 				not_decreasing_count++;
 			else
 				not_decreasing_count = 0;
@@ -279,7 +280,7 @@ static u32 *alloc_l2_pt(struct ipu7_mmu_info *mmu_info)
 
 	dev_dbg(mmu_info->dev, "alloc_l2: get_zeroed_page() = %p\n", pt);
 
-	for (i = 0; i < ISP_L1PT_PTES; i++)
+	for (i = 0; i < ISP_L2PT_PTES; i++)
 		pt[i] = mmu_info->dummy_page_pteval;
 
 	return pt;
@@ -636,7 +637,11 @@ static struct ipu7_mmu_info *ipu7_mmu_alloc(struct ipu7_device *isp)
 	struct ipu7_mmu_info *mmu_info;
 	int ret;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	mmu_info = kzalloc_obj(*mmu_info);
+#else
 	mmu_info = kzalloc(sizeof(*mmu_info), GFP_KERNEL);
+#endif
 	if (!mmu_info)
 		return NULL;
 
@@ -710,7 +715,11 @@ static struct ipu7_dma_mapping *alloc_dma_mapping(struct ipu7_device *isp)
 	struct ipu7_dma_mapping *dmap;
 	unsigned long base_pfn;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	dmap = kzalloc_obj(*dmap);
+#else
 	dmap = kzalloc(sizeof(*dmap), GFP_KERNEL);
+#endif
 	if (!dmap)
 		return NULL;
 

@@ -1,0 +1,233 @@
+From a0f8d24142e802c5e72df7200a2366e72036cc40 Mon Sep 17 00:00:00 2001
+From: linya14x <linx.yang@intel.com>
+Date: Mon, 26 Oct 2026 16:06:12 +0800
+Subject: [PATCH] staging: ipu7: Defer ISYS frame-drop logging
+
+Printing frame-drop messages directly inside the interrupt handler (ISR)
+can introduce significant latency and CPU overhead, especially during
+frequent frame drops or drop storms.
+
+To address this, defer frame-drop logging to a delayed workqueue:
+1. Aggregate frame-drop counts on a per-stream basis and periodically
+   output the latest error details from process context once per second.
+2. Store only 'struct ia_gofo_msg_err' instead of the full response
+   structure, reducing hard-IRQ spinlock copy overhead from 64B+ to 24B
+   and driver memory footprint from ~1.1KB to 384B.
+3. Synchronously flush pending frame-drop logs upon closing a stream,
+   entering runtime suspend, and removing the device, avoiding stale drop
+   counts from contaminating subsequent streaming sessions or logging after
+   hardware power-down.
+
+Signed-off-by: linya14x <linx.yang@intel.com>
+Change-Id: I0df07533effc4f93d70b8c98260227f7d30ed1a3
+---
+ drivers/staging/media/ipu7/ipu7-isys-video.c |  1 +
+ drivers/staging/media/ipu7/ipu7-isys.c       | 97 +++++++++++++++++---
+ drivers/staging/media/ipu7/ipu7-isys.h       |  6 ++
+ 3 files changed, 93 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7-isys-video.c b/drivers/staging/media/ipu7/ipu7-isys-video.c
+index 8e4f0447eccbe7..559aa7cf574fa3 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys-video.c
++++ b/drivers/staging/media/ipu7/ipu7-isys-video.c
+@@ -670,6 +670,7 @@ static void close_streaming_firmware(struct ipu7_isys_video *av)
+ 			stream->last_sequence);
+
+ #endif
++	ipu7_isys_flush_frame_drop(av->isys);
+ 	put_stream_opened(av);
+ }
+
+diff --git a/drivers/staging/media/ipu7/ipu7-isys.c b/drivers/staging/media/ipu7/ipu7-isys.c
+index 62474573f978e8..d17f423be91bd1 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -17,6 +17,7 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/err.h>
+ #include <linux/firmware.h>
++#include <linux/interrupt.h>
+ #include <linux/list.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+@@ -52,6 +53,8 @@
+
+ #define ISYS_PM_QOS_VALUE	300
+
++static void isys_frame_drop_work(struct work_struct *work);
++
+ static int
+ isys_complete_ext_device_registration(struct ipu7_isys *isys,
+ 				      struct v4l2_subdev *sd,
+@@ -652,6 +655,8 @@ static int isys_runtime_pm_suspend(struct device *dev)
+ 	isys->power = 0;
+ 	spin_unlock_irqrestore(&isys->power_lock, flags);
+
++	flush_delayed_work(&isys->frame_drop_work);
++
+ #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+ 	mutex_lock(&isys->reset_mutex);
+ 	isys->need_reset = false;
+@@ -693,6 +698,15 @@ static void isys_remove(struct auxiliary_device *auxdev)
+ 	struct ipu7_isys *isys = dev_get_drvdata(&auxdev->dev);
+ 	struct isys_fw_msgs *fwmsg, *safe;
+ 	struct ipu7_bus_device *adev = auxdev_to_adev(auxdev);
++	unsigned long flags;
++
++	adev->auxdrv_data = NULL;
++	adev->auxdrv = NULL;
++	spin_lock_irqsave(&isys->power_lock, flags);
++	isys->power = 0;
++	spin_unlock_irqrestore(&isys->power_lock, flags);
++	synchronize_irq(adev->isp->pdev->irq);
++	flush_delayed_work(&isys->frame_drop_work);
+
+ 	adev->get_running_fw_task_count = NULL;
+
+@@ -943,13 +957,13 @@ static int isys_probe(struct auxiliary_device *auxdev,
+ 	if (!isys)
+ 		return -ENOMEM;
+
++	INIT_DELAYED_WORK(&isys->frame_drop_work, isys_frame_drop_work);
++	spin_lock_init(&isys->frame_drop_lock);
++
+ 	ret = pm_runtime_resume_and_get(&auxdev->dev);
+ 	if (ret < 0)
+ 		return ret;
+
+-	adev->auxdrv_data =
+-		(const struct ipu7_auxdrv_data *)auxdev_id->driver_data;
+-	adev->auxdrv = to_auxiliary_drv(auxdev->dev.driver);
+ 	isys->adev = adev;
+ 	isys->pdata = adev->pdata;
+
+@@ -1013,6 +1027,10 @@ static int isys_probe(struct auxiliary_device *auxdev,
+ 	if (ret)
+ 		goto out_cleanup;
+
++	adev->auxdrv_data =
++		(const struct ipu7_auxdrv_data *)auxdev_id->driver_data;
++	adev->auxdrv = to_auxiliary_drv(auxdev->dev.driver);
++
+ 	ipu7_mmu_hw_cleanup(adev->mmu);
+ 	pm_runtime_put(&auxdev->dev);
+
+@@ -1134,6 +1152,70 @@ static const struct resp_to_msg is_fw_msg[] = {
+ 	{N_IPU_INSYS_RESP_TYPE, "N_IPU_INSYS_RESP_TYPE"},
+ };
+
++static void isys_frame_drop_work(struct work_struct *work)
++{
++	struct ipu7_isys *isys =
++		container_of(to_delayed_work(work), struct ipu7_isys,
++			     frame_drop_work);
++	struct device *dev = &isys->adev->auxdev.dev;
++	struct ia_gofo_msg_err errors[IPU_ISYS_MAX_STREAMS];
++	u32 counts[IPU_ISYS_MAX_STREAMS];
++	const size_t log_size = IPU_ISYS_MAX_STREAMS * 52 + 1;
++	char *log;
++	size_t len = 0;
++	unsigned long flags;
++	unsigned int i;
++
++	log = kmalloc(log_size, GFP_KERNEL);
++	if (!log)
++		return;
++
++	spin_lock_irqsave(&isys->frame_drop_lock, flags);
++	memcpy(counts, isys->frame_drop_count, sizeof(counts));
++	memcpy(errors, isys->frame_drop_err, sizeof(errors));
++	memset(isys->frame_drop_count, 0, sizeof(isys->frame_drop_count));
++	spin_unlock_irqrestore(&isys->frame_drop_lock, flags);
++
++	for (i = 0; i < IPU_ISYS_MAX_STREAMS; i++) {
++		if (!counts[i])
++			continue;
++
++		len += scnprintf(log + len, log_size - len,
++				 " %u=%u:[%u/%u]:[%u,%u]", i, counts[i],
++				 errors[i].err_group, errors[i].err_code,
++				 errors[i].err_detail[0], errors[i].err_detail[1]);
++	}
++
++	if (len)
++		dev_warn(dev, "FRAME DROP: stream=count:[group/code]:[details] %s\n",
++			 log);
++	kfree(log);
++}
++
++static void isys_log_frame_drop(struct ipu7_isys *isys,
++				const struct ipu7_insys_resp *resp)
++{
++	unsigned long flags;
++	unsigned int stream_id = resp->stream_id;
++
++	if (stream_id >= IPU_ISYS_MAX_STREAMS)
++		return;
++
++	spin_lock_irqsave(&isys->frame_drop_lock, flags);
++	if (isys->frame_drop_count[stream_id] != U32_MAX)
++		isys->frame_drop_count[stream_id]++;
++	isys->frame_drop_err[stream_id] = resp->error_info;
++	spin_unlock_irqrestore(&isys->frame_drop_lock, flags);
++
++	schedule_delayed_work(&isys->frame_drop_work,
++			      msecs_to_jiffies(1000));
++}
++
++void ipu7_isys_flush_frame_drop(struct ipu7_isys *isys)
++{
++	flush_delayed_work(&isys->frame_drop_work);
++}
++
+ int isys_isr_one(struct ipu7_bus_device *adev)
+ {
+ 	struct ipu7_isys *isys = ipu7_bus_get_drvdata(adev);
+@@ -1166,14 +1248,7 @@ int isys_isr_one(struct ipu7_bus_device *adev)
+ 	if (err_info.err_group == INSYS_MSG_ERR_GROUP_CAPTURE &&
+ 	    err_info.err_code == INSYS_MSG_ERR_CAPTURE_SYNC_FRAME_DROP) {
+ 		/* receive a sp w/o command, firmware drop it */
+-		dev_dbg(dev, "FRAME DROP: %02u %s stream %u\n",
+-			resp->type, is_fw_msg[resp->type].msg,
+-			resp->stream_id);
+-		dev_dbg(dev, "\tpin %u buf_id %llx frame %u\n",
+-			resp->pin_id, resp->buf_id, resp->frame_id);
+-		dev_dbg(dev, "\terror group %u code %u details [%u %u]\n",
+-			err_info.err_group, err_info.err_code,
+-			err_info.err_detail[0], err_info.err_detail[1]);
++		isys_log_frame_drop(isys, resp);
+ 	} else if (!IA_GOFO_MSG_ERR_IS_OK(err_info)) {
+ 		dev_err(dev, "%02u %s stream %u pin %u buf_id %llx frame %u\n",
+ 			resp->type, is_fw_msg[resp->type].msg, resp->stream_id,
+diff --git a/drivers/staging/media/ipu7/ipu7-isys.h b/drivers/staging/media/ipu7/ipu7-isys.h
+index 0c21ee3ea0d152..02b1d586a7f16b 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys.h
++++ b/drivers/staging/media/ipu7/ipu7-isys.h
+@@ -12,6 +12,7 @@
+ #include <linux/pm_qos.h>
+ #include <linux/spinlock_types.h>
+ #include <linux/types.h>
++#include <linux/workqueue.h>
+
+ #include <media/media-device.h>
+ #include <media/v4l2-async.h>
+@@ -136,6 +137,10 @@ struct ipu7_isys {
+
+ 	struct ipu7_insys_config *subsys_config;
+ 	dma_addr_t subsys_config_dma_addr;
++	struct delayed_work frame_drop_work;
++	spinlock_t frame_drop_lock; /* Protect per-stream frame-drop snapshots */
++	struct ia_gofo_msg_err frame_drop_err[IPU_ISYS_MAX_STREAMS];
++	u32 frame_drop_count[IPU_ISYS_MAX_STREAMS];
+ #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+ 	struct mutex reset_mutex;
+ 	bool need_reset;
+@@ -173,4 +178,5 @@ void ipu7_cleanup_fw_msg_bufs_by_stream_id(struct ipu7_isys *isys,
+ 					   u16 stream_id);
+ int isys_isr_one(struct ipu7_bus_device *adev);
+ void ipu7_isys_setup_hw(struct ipu7_isys *isys);
++void ipu7_isys_flush_frame_drop(struct ipu7_isys *isys);
+ #endif /* IPU7_ISYS_H */
+--
+2.53.0
+
