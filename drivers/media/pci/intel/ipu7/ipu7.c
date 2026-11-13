@@ -40,10 +40,6 @@
 #include "ipu7-mmu.h"
 #include "ipu7-platform-regs.h"
 
-#if IS_ENABLED(CONFIG_INTEL_IPU_ACPI)
-#include <media/ipu-get-acpi.h>
-
-#endif
 #define IPU_PCI_BAR		0
 #define IPU_PCI_PBBAR		4
 
@@ -2110,9 +2106,10 @@ static const struct ipu_buttress_ctrl ipu8_psys_buttress_ctrl = {
 };
 
 void ipu_internal_pdata_init(struct ipu_isys_internal_pdata *isys_ipdata,
-			     struct ipu_psys_internal_pdata *psys_ipdata)
+			     struct ipu_psys_internal_pdata *psys_ipdata,
+			     u8 hw_ver)
 {
-	isys_ipdata->csi2.nports = ARRAY_SIZE(ipu7_csi_offsets);
+	isys_ipdata->csi2.nports = is_ipu7(hw_ver) ? 4 : 3;
 	isys_ipdata->csi2.offsets = ipu7_csi_offsets;
 	isys_ipdata->num_parallel_streams = IPU7_ISYS_NUM_STREAMS;
 	psys_ipdata->hw_variant.spc_offset = IPU7_PSYS_SPC_OFFSET;
@@ -2137,7 +2134,6 @@ static int ipu7_isys_check_fwnode_graph(struct fwnode_handle *fwnode)
 static struct ipu7_bus_device *
 ipu7_isys_init(struct pci_dev *pdev, struct device *parent,
 	       const struct ipu_buttress_ctrl *ctrl, void __iomem *base,
-	       struct ipu7_isys_subdev_pdata *spdata,
 	       const struct ipu_isys_internal_pdata *ipdata,
 	       unsigned int nr)
 {
@@ -2162,13 +2158,12 @@ ipu7_isys_init(struct pci_dev *pdev, struct device *parent,
 		}
 	}
 
-	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
+	pdata = kzalloc_obj(*pdata);
 	if (!pdata)
 		return ERR_PTR(-ENOMEM);
 
 	pdata->base = base;
 	pdata->ipdata = ipdata;
-	pdata->spdata = spdata;
 
 	isys_adev = ipu7_bus_initialize_device(pdev, parent, pdata, ctrl,
 					       IPU_ISYS_NAME);
@@ -2182,21 +2177,18 @@ ipu7_isys_init(struct pci_dev *pdev, struct device *parent,
 	isys_adev->mmu = ipu7_mmu_init(dev, base, ISYS_MMID,
 				       &ipdata->hw_variant);
 	if (IS_ERR(isys_adev->mmu)) {
-		dev_err_probe(dev, PTR_ERR(isys_adev->mmu),
-			      "ipu7_mmu_init(isys_adev->mmu) failed\n");
+		ret = dev_err_probe(dev, PTR_ERR(isys_adev->mmu),
+				    "ipu7_mmu_init(isys_adev->mmu) failed\n");
 		put_device(&isys_adev->auxdev.dev);
-		kfree(pdata);
-		return ERR_CAST(isys_adev->mmu);
+		return ERR_PTR(ret);
 	}
 
 	isys_adev->mmu->dev = &isys_adev->auxdev.dev;
 	isys_adev->subsys = IPU_IS;
 
 	ret = ipu7_bus_add_device(isys_adev);
-	if (ret) {
-		kfree(pdata);
+	if (ret)
 		return ERR_PTR(ret);
-	}
 
 	return isys_adev;
 }
@@ -2210,7 +2202,7 @@ ipu7_psys_init(struct pci_dev *pdev, struct device *parent,
 	struct ipu7_psys_pdata *pdata;
 	int ret;
 
-	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
+	pdata = kzalloc_obj(*pdata);
 	if (!pdata)
 		return ERR_PTR(-ENOMEM);
 
@@ -2229,21 +2221,18 @@ ipu7_psys_init(struct pci_dev *pdev, struct device *parent,
 	psys_adev->mmu = ipu7_mmu_init(&pdev->dev, base, PSYS_MMID,
 				       &ipdata->hw_variant);
 	if (IS_ERR(psys_adev->mmu)) {
-		dev_err_probe(&pdev->dev, PTR_ERR(psys_adev->mmu),
-			      "ipu7_mmu_init(psys_adev->mmu) failed\n");
+		ret = dev_err_probe(&pdev->dev, PTR_ERR(psys_adev->mmu),
+				    "ipu7_mmu_init(psys_adev->mmu) failed\n");
 		put_device(&psys_adev->auxdev.dev);
-		kfree(pdata);
-		return ERR_CAST(psys_adev->mmu);
+		return ERR_PTR(ret);
 	}
 
 	psys_adev->mmu->dev = &psys_adev->auxdev.dev;
 	psys_adev->subsys = IPU_PS;
 
 	ret = ipu7_bus_add_device(psys_adev);
-	if (ret) {
-		kfree(pdata);
+	if (ret)
 		return ERR_PTR(ret);
-	}
 
 	return psys_adev;
 }
@@ -2331,7 +2320,7 @@ static int ipu7_map_fw_code_region(struct ipu7_bus_device *sys,
 
 	n_pages = PFN_UP(size);
 
-	pages = kmalloc_array(n_pages, sizeof(*pages), GFP_KERNEL);
+	pages = kmalloc_objs(*pages, n_pages);
 	if (!pages)
 		return -ENOMEM;
 
@@ -2409,7 +2398,7 @@ static int ipu7_init_fw_code_region_by_sys(struct ipu7_bus_device *sys,
 		return ret;
 	}
 
-	ret = pm_runtime_get_sync(dev);
+	ret = pm_runtime_resume_and_get(dev);
 	if (ret < 0) {
 		dev_err(dev, "Failed to get runtime PM\n");
 		return ret;
@@ -2571,7 +2560,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		return -ENODEV;
 	}
 
-	ipu_internal_pdata_init(isys_ipdata, psys_ipdata);
+	ipu_internal_pdata_init(isys_ipdata, psys_ipdata, isp->hw_ver);
 
 	isys_base = isp->base + isys_ipdata->hw_variant.offset;
 	psys_base = isp->base + psys_ipdata->hw_variant.offset;
@@ -2616,11 +2605,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto out_ipu_bus_del_devices;
 	}
 
-#if IS_ENABLED(CONFIG_INTEL_IPU_ACPI)
-	ipu_get_acpi_devices_new(&dev->platform_data);
-#endif
 	isp->isys = ipu7_isys_init(pdev, dev, isys_ctrl, isys_base,
-				   dev->platform_data,
 				   isys_ipdata, 0);
 	if (IS_ERR(isp->isys)) {
 		ret = PTR_ERR(isp->isys);
@@ -2783,6 +2768,10 @@ static void ipu7_pci_reset_done(struct pci_dev *pdev)
  */
 static int ipu7_suspend(struct device *dev)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
+
+	synchronize_irq(pdev->irq);
+
 	return 0;
 }
 
@@ -2803,7 +2792,7 @@ static int ipu7_resume(struct device *dev)
 	if (ret)
 		dev_err(dev, "IPC reset protocol failed!\n");
 
-	ret = pm_runtime_get_sync(&isp->psys->auxdev.dev);
+	ret = pm_runtime_resume_and_get(&isp->psys->auxdev.dev);
 	if (ret < 0) {
 		dev_err(dev, "Failed to get runtime PM\n");
 		return 0;

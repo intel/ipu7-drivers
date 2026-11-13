@@ -12,6 +12,7 @@
 #include <linux/pm_qos.h>
 #include <linux/spinlock_types.h>
 #include <linux/types.h>
+#include <linux/workqueue.h>
 
 #include <media/media-device.h>
 #include <media/v4l2-async.h>
@@ -136,6 +137,10 @@ struct ipu7_isys {
 
 	struct ipu7_insys_config *subsys_config;
 	dma_addr_t subsys_config_dma_addr;
+	struct delayed_work frame_drop_work;
+	spinlock_t frame_drop_lock; /* Protect per-stream frame-drop snapshots */
+	struct ia_gofo_msg_err frame_drop_err[IPU_ISYS_MAX_STREAMS];
+	u32 frame_drop_count[IPU_ISYS_MAX_STREAMS];
 #ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
 	struct mutex reset_mutex;
 	bool need_reset;
@@ -161,21 +166,6 @@ struct ipu7_isys_csi2_config {
 	struct fwnode_handle *ep;
 };
 
-struct ipu7_isys_subdev_i2c_info {
-	struct i2c_board_info board_info;
-	int i2c_adapter_id;
-	char i2c_adapter_bdf[32];
-};
-
-struct ipu7_isys_subdev_info {
-	struct ipu7_isys_csi2_config *csi2;
-	struct ipu7_isys_subdev_i2c_info i2c;
-};
-
-struct ipu7_isys_subdev_pdata {
-	struct ipu7_isys_subdev_info **subdevs;
-};
-
 struct sensor_async_sd {
 	struct v4l2_async_connection asc;
 	struct ipu7_isys_csi2_config csi2;
@@ -188,4 +178,5 @@ void ipu7_cleanup_fw_msg_bufs_by_stream_id(struct ipu7_isys *isys,
 					   u16 stream_id);
 int isys_isr_one(struct ipu7_bus_device *adev);
 void ipu7_isys_setup_hw(struct ipu7_isys *isys);
+void ipu7_isys_flush_frame_drop(struct ipu7_isys *isys);
 #endif /* IPU7_ISYS_H */
