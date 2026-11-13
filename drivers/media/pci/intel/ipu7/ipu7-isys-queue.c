@@ -338,7 +338,6 @@ static int ipu7_isys_stream_start(struct ipu7_isys_video *av,
 			return -ENOMEM;
 
 		msg->stream_id = stream->stream_handle;
-
 		buf = &msg->fw_msg.frame;
 
 		ipu7_isys_buffer_to_fw_frame_buff(buf, stream, bl);
@@ -439,8 +438,8 @@ static void buf_queue(struct vb2_buffer *vb)
 		ret = -ENOMEM;
 		goto out;
 	}
-	msg->stream_id = stream->stream_handle;
 
+	msg->stream_id = stream->stream_handle;
 	buf = &msg->fw_msg.frame;
 
 	ipu7_isys_buffer_to_fw_frame_buff(buf, stream, &bl);

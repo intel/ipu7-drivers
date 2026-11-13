@@ -144,8 +144,6 @@ struct ipu7_device {
 /* Currently chosen arbitration mechanism for VC1 */
 #define IPU_BTRS_ARB_STALL_MODE_VC1	IPU_BTRS_ARB_MODE_TYPE_REARB
 
-struct ipu7_isys_subdev_pdata;
-
 /* One L2 entry maps 1024 L1 entries and one L1 entry per page */
 #define IPU_MMUV2_L2_RANGE		(1024 * PAGE_SIZE)
 /* Max L2 blocks per stream */
@@ -229,7 +227,6 @@ struct ipu_isys_internal_pdata {
 struct ipu7_isys_pdata {
 	void __iomem *base;
 	const struct ipu_isys_internal_pdata *ipdata;
-	struct ipu7_isys_subdev_pdata *spdata;
 };
 
 struct ipu_psys_internal_pdata {
@@ -244,6 +241,7 @@ struct ipu7_psys_pdata {
 int request_cpd_fw(const struct firmware **firmware_p, const char *name,
 		   struct device *device);
 void ipu_internal_pdata_init(struct ipu_isys_internal_pdata *isys_ipdata,
-			     struct ipu_psys_internal_pdata *psys_ipdata);
+			     struct ipu_psys_internal_pdata *psys_ipdata,
+			     u8 hw_ver);
 void ipu7_dump_fw_error_log(const struct ipu7_bus_device *adev);
 #endif /* IPU7_H */

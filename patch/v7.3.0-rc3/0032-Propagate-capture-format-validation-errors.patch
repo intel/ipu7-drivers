@@ -1,0 +1,30 @@
+From 7154b85f85e65ded392896fb7ca36532f0eccdce Mon Sep 17 00:00:00 2001
+From: Pengpeng He <pengpengx.he@intel.com>
+Date: Mon, 19 Oct 2026 16:14:00 +0800
+Subject: [PATCH] Propagate capture format validation errors
+
+Signed-off-by: Pengpeng He <pengpengx.he@intel.com>
+---
+ drivers/staging/media/ipu7/ipu7-isys-video.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7-isys-video.c b/drivers/staging/media/ipu7/ipu7-isys-video.c
+index f8f8e18a258e..88abafcb6ce6 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys-video.c
++++ b/drivers/staging/media/ipu7/ipu7-isys-video.c
+@@ -265,8 +265,12 @@ static int ipu7_isys_vidioc_s_fmt_vid_cap(struct file *file, void *fh,
+ 					  struct v4l2_format *f)
+ {
+ 	struct ipu7_isys_video *av = video_drvdata(file);
++	int ret;
++
++	ret = ipu7_isys_vidioc_try_fmt_vid_cap(file, fh, f);
++	if (ret)
++		return ret;
+
+-	ipu7_isys_vidioc_try_fmt_vid_cap(file, fh, f);
+ 	av->pix_fmt = f->fmt.pix;
+
+ 	return 0;
+--
+2.43.0

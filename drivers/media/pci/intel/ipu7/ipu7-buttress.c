@@ -354,7 +354,8 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
 
 	/* check btrs ATS, CFI and IMR errors, BIT(0) is unused for IPU */
 	pb_local_irq = readl(isp->pb_base + BTRS_LOCAL_INTERRUPT_MASK);
-	if (WARN_ON_ONCE(pb_local_irq == 0xffffffff)) {
+	if (pb_local_irq == 0xffffffff) {
+		dev_warn_once(dev, "invalid PB irq status\n");
 		pm_runtime_put_noidle(dev);
 		return IRQ_NONE;
 	}
@@ -374,12 +375,19 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
 	}
 
 	irq_status = readl(isp->base + BUTTRESS_REG_IRQ_STATUS);
-	if (!irq_status || WARN_ON_ONCE(irq_status == 0xffffffff)) {
+	if (!irq_status) {
+		pm_runtime_put_noidle(dev);
+		return IRQ_NONE;
+	}
+
+	if (irq_status == 0xffffffff) {
+		dev_warn_once(dev, "invalid irq status 0x%08x\n", irq_status);
 		pm_runtime_put_noidle(dev);
 		return IRQ_NONE;
 	}
 
 	do {
+		writel(0, isp->base + BUTTRESS_REG_IRQ_ENABLE);
 		writel(irq_status, isp->base + BUTTRESS_REG_IRQ_CLEAR);
 
 		for (i = 0; i < ARRAY_SIZE(ipu7_adev_irq_mask); i++) {
@@ -395,6 +403,9 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
 				ret = IRQ_HANDLED;
 			}
 		}
+
+		writel(BUTTRESS_IRQS & ~disable_irqs,
+		       isp->base + BUTTRESS_REG_IRQ_ENABLE);
 
 		if (irq_status & (BUTTRESS_IRQS | BUTTRESS_IRQ_SAI_VIOLATION) &&
 		    ret == IRQ_NONE)
@@ -423,10 +434,6 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
 
 		irq_status = readl(isp->base + BUTTRESS_REG_IRQ_STATUS);
 	} while (irq_status);
-
-	if (disable_irqs)
-		writel(BUTTRESS_IRQS & ~disable_irqs,
-		       isp->base + BUTTRESS_REG_IRQ_ENABLE);
 
 	pm_runtime_put(dev);
 

@@ -13,6 +13,7 @@
 #include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
+#include <linux/version.h>
 
 #include "ipu7.h"
 #include "ipu7-bus.h"
@@ -90,7 +91,11 @@ ipu7_bus_initialize_device(struct pci_dev *pdev, struct device *parent,
 	struct ipu7_device *isp = pci_get_drvdata(pdev);
 	int ret;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	adev = kzalloc_obj(*adev);
+#else
 	adev = kzalloc(sizeof(*adev), GFP_KERNEL);
+#endif
 	if (!adev)
 		return ERR_PTR(-ENOMEM);
 

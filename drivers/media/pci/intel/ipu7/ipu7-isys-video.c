@@ -40,6 +40,26 @@
 #include "ipu7-isys-video.h"
 #include "ipu7-platform-regs.h"
 
+#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
+static int video_release(struct file *file)
+{
+	struct ipu7_isys_video *av = video_drvdata(file);
+
+	dev_dbg(&av->isys->adev->auxdev.dev,
+		"release: %s: enter\n", av->vdev.name);
+	mutex_lock(&av->isys->reset_mutex);
+	while (av->isys->state & RESET_STATE_IN_RESET) {
+		mutex_unlock(&av->isys->reset_mutex);
+		dev_dbg(&av->isys->adev->auxdev.dev,
+			"release: %s: wait for reset\n", av->vdev.name);
+		usleep_range(10000, 11000);
+		mutex_lock(&av->isys->reset_mutex);
+	}
+	mutex_unlock(&av->isys->reset_mutex);
+	return vb2_fop_release(file);
+}
+#endif
+
 const struct ipu7_isys_pixelformat ipu7_isys_pfmts[] = {
 	{V4L2_PIX_FMT_SBGGR12, 16, 12, MEDIA_BUS_FMT_SBGGR12_1X12,
 	 IPU_INSYS_FRAME_FORMAT_RAW16},
@@ -91,26 +111,6 @@ const struct ipu7_isys_pixelformat ipu7_isys_pfmts[] = {
 	 IPU_INSYS_FRAME_FORMAT_RGBA888},
 };
 
-#ifdef CONFIG_VIDEO_INTEL_IPU7_ISYS_RESET
-static int video_release(struct file *file)
-{
-	struct ipu7_isys_video *av = video_drvdata(file);
-
-	dev_dbg(&av->isys->adev->auxdev.dev,
-		"release: %s: enter\n", av->vdev.name);
-	mutex_lock(&av->isys->reset_mutex);
-	while (av->isys->state & RESET_STATE_IN_RESET) {
-		mutex_unlock(&av->isys->reset_mutex);
-		dev_dbg(&av->isys->adev->auxdev.dev,
-			"release: %s: wait for reset\n", av->vdev.name);
-		usleep_range(10000, 11000);
-		mutex_lock(&av->isys->reset_mutex);
-	}
-	mutex_unlock(&av->isys->reset_mutex);
-	return vb2_fop_release(file);
-}
-
-#endif
 const struct ipu7_isys_pixelformat *ipu7_isys_get_isys_format(u32 pixelformat)
 {
 	unsigned int i;
@@ -260,8 +260,12 @@ static int ipu7_isys_vidioc_s_fmt_vid_cap(struct file *file, void *fh,
 					  struct v4l2_format *f)
 {
 	struct ipu7_isys_video *av = video_drvdata(file);
+	int ret;
 
-	ipu7_isys_vidioc_try_fmt_vid_cap(file, fh, f);
+	ret = ipu7_isys_vidioc_try_fmt_vid_cap(file, fh, f);
+	if (ret)
+		return ret;
+
 	av->pix_fmt = f->fmt.pix;
 
 	return 0;
@@ -488,7 +492,6 @@ static int start_stream_firmware(struct ipu7_isys_video *av,
 		return -ENOMEM;
 
 	msg->stream_id = stream->stream_handle;
-
 	stream_cfg = &msg->fw_msg.stream;
 	stream_cfg->port_id = stream->stream_source;
 	stream_cfg->vc = stream->vc;
@@ -667,6 +670,7 @@ static void close_streaming_firmware(struct ipu7_isys_video *av)
 			stream->last_sequence);
 
 #endif
+	ipu7_isys_flush_frame_drop(av->isys);
 	put_stream_opened(av);
 }
 
