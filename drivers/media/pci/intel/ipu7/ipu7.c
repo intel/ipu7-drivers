@@ -2110,9 +2110,10 @@ static const struct ipu_buttress_ctrl ipu8_psys_buttress_ctrl = {
 };
 
 void ipu_internal_pdata_init(struct ipu_isys_internal_pdata *isys_ipdata,
-			     struct ipu_psys_internal_pdata *psys_ipdata)
+			     struct ipu_psys_internal_pdata *psys_ipdata,
+			     u8 hw_ver)
 {
-	isys_ipdata->csi2.nports = ARRAY_SIZE(ipu7_csi_offsets);
+	isys_ipdata->csi2.nports = is_ipu7(hw_ver) ? 4 : 3;
 	isys_ipdata->csi2.offsets = ipu7_csi_offsets;
 	isys_ipdata->num_parallel_streams = IPU7_ISYS_NUM_STREAMS;
 	psys_ipdata->hw_variant.spc_offset = IPU7_PSYS_SPC_OFFSET;
@@ -2571,7 +2572,7 @@ static int ipu7_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		return -ENODEV;
 	}
 
-	ipu_internal_pdata_init(isys_ipdata, psys_ipdata);
+	ipu_internal_pdata_init(isys_ipdata, psys_ipdata, isp->hw_ver);
 
 	isys_base = isp->base + isys_ipdata->hw_variant.offset;
 	psys_base = isp->base + psys_ipdata->hw_variant.offset;
