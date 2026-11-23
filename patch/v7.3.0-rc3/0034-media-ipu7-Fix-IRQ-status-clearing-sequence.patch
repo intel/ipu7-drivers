@@ -1,0 +1,80 @@
+From 17b2fb1f0d23974e11058d17c94122f97e706122 Mon Sep 17 00:00:00 2001
+From: Pengpeng He <pengpengx.he@intel.com>
+Date: Mon, 9 Nov 2026 10:51:47 +0800
+Subject: [PATCH] media: ipu7: Re-arm IRQ outputs after clearing status
+
+Mask the IB IRQ output before clearing its latched status.
+Re-enable non-deferred sources after dispatch, while keeping
+threaded sources masked until their handlers complete.
+
+For ISYS, disable the UC-to-SW IRQ before clearing status, then
+re-enable it. This lets the level output deassert and be reasserted
+when pending status remains, so the parent controller can observe it.
+
+Signed-off-by: Pengpeng He <pengpengx.he@intel.com>
+---
+ drivers/staging/media/ipu7/ipu7-buttress.c | 8 ++++----
+ drivers/staging/media/ipu7/ipu7-isys.c     | 5 +++--
+ 2 files changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/staging/media/ipu7/ipu7-buttress.c b/drivers/staging/media/ipu7/ipu7-buttress.c
+index e4328cafe91d..6c7a5f0455b9 100644
+--- a/drivers/staging/media/ipu7/ipu7-buttress.c
++++ b/drivers/staging/media/ipu7/ipu7-buttress.c
+@@ -379,6 +379,7 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
+ 	}
+
+ 	do {
++		writel(0, isp->base + BUTTRESS_REG_IRQ_ENABLE);
+ 		writel(irq_status, isp->base + BUTTRESS_REG_IRQ_CLEAR);
+
+ 		for (i = 0; i < ARRAY_SIZE(ipu7_adev_irq_mask); i++) {
+@@ -395,6 +396,9 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
+ 			}
+ 		}
+
++		writel(BUTTRESS_IRQS & ~disable_irqs,
++		       isp->base + BUTTRESS_REG_IRQ_ENABLE);
++
+ 		if (irq_status & (BUTTRESS_IRQS | BUTTRESS_IRQ_SAI_VIOLATION) &&
+ 		    ret == IRQ_NONE)
+ 			ret = IRQ_HANDLED;
+@@ -423,10 +427,6 @@ irqreturn_t ipu_buttress_isr(int irq, void *isp_ptr)
+ 		irq_status = readl(isp->base + BUTTRESS_REG_IRQ_STATUS);
+ 	} while (irq_status);
+
+-	if (disable_irqs)
+-		writel(BUTTRESS_IRQS & ~disable_irqs,
+-		       isp->base + BUTTRESS_REG_IRQ_ENABLE);
+-
+ 	pm_runtime_put(dev);
+
+ 	return ret;
+diff --git a/drivers/staging/media/ipu7/ipu7-isys.c b/drivers/staging/media/ipu7/ipu7-isys.c
+index 14197914669f..e8b7384b8092 100644
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -1392,8 +1392,11 @@ static irqreturn_t isys_isr(struct ipu7_bus_device *adev)
+ 		dev_dbg(dev, "status to_sw 0x%08x\n", status_sw);
+
+ 	do {
++		writel(0, base + sw_offset + TO_SW_IRQ_CNTL_ENABLE);
+ 		writel(status_sw, base + sw_offset + TO_SW_IRQ_CNTL_CLEAR);
+ 		writel(status_csi, base + csi_offset + IRQ_CTL_CLEAR);
++		writel(TO_SW_IRQ_MASK, base + sw_offset + TO_SW_IRQ_CNTL_ENABLE);
++		writel(TO_SW_IRQ_MASK, base + sw_offset + TO_SW_IRQ_CNTL_MASK_N);
+
+ 		if (isys->isr_csi2_mask & status_csi) {
+ 			unsigned int i;
+@@ -1417,8 +1420,6 @@ static irqreturn_t isys_isr(struct ipu7_bus_device *adev)
+ 	} while ((status_csi & isys->isr_csi2_mask) ||
+ 		 (status_sw & TO_SW_IRQ_FW));
+
+-	writel(TO_SW_IRQ_MASK, base + sw_offset + TO_SW_IRQ_CNTL_MASK_N);
+-
+ 	spin_unlock(&isys->power_lock);
+
+ 	return IRQ_HANDLED;
+--
+2.43.0
+
