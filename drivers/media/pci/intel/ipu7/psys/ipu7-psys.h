@@ -113,6 +113,8 @@ struct ipu7_psys {
 	struct device dev;
 
 	struct mutex mutex;	/* Psys various */
+	/* Serialize task queue acquisition against DMA unmap / TLB invalidation */
+	struct mutex acquire_fw_task_buffer_lock;
 	int ready; /* psys fw status */
 	spinlock_t ready_lock;	/* protect psys firmware state */
 
