@@ -1049,9 +1049,9 @@ static long ipu_psys_task_request(struct ipu_psys_task_request *task,
 		return -EINVAL;
 	}
 
-	mutex_lock(&psys->adev->acquire_fw_task_buffer_lock);
+	mutex_lock(&psys->acquire_fw_task_buffer_lock);
 	tq = ipu7_psys_get_task_queue(fh->ip, task);
-	mutex_unlock(&psys->adev->acquire_fw_task_buffer_lock);
+	mutex_unlock(&psys->acquire_fw_task_buffer_lock);
 	if (!tq) {
 		dev_err(&psys->dev, "Failed to get task queue\n");
 		return -EINVAL;
@@ -1474,7 +1474,7 @@ static int ipu7_psys_probe(struct auxiliary_device *auxdev,
 	}
 
 	dev_set_drvdata(dev, psys);
-	adev->get_running_fw_task_count =
+	psys->get_running_fw_task_count =
 		ipu7_psys_get_running_fw_task_count;
 	mutex_unlock(&ipu7_psys_mutex);
 #ifdef CONFIG_DEBUG_FS
@@ -1511,7 +1511,7 @@ static void ipu7_psys_remove(struct auxiliary_device *auxdev)
 	struct ipu7_psys *psys = dev_get_drvdata(&auxdev->dev);
 	struct device *dev = &auxdev->dev;
 
-	psys->adev->get_running_fw_task_count = NULL;
+	psys->get_running_fw_task_count = NULL;
 #ifdef CONFIG_DEBUG_FS
 	struct ipu7_device *isp = psys->adev->isp;
 
